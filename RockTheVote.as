@@ -59,19 +59,19 @@ array<CTextMenu@> g_nomMenus = {
 
 void PluginInit() {
 
-    g_Module.ScriptInfo.SetAuthor("w00tguy");
-    g_Module.ScriptInfo.SetContactInfo("https://github.com/wootguy");
-    g_Hooks.RegisterHook(Hooks::Player::ClientDisconnect, @ClientLeave);
-    g_Hooks.RegisterHook(Hooks::Player::ClientSay, @ClientSay);
-    g_Hooks.RegisterHook(Hooks::Game::MapChange, @MapChange);
+	g_Module.ScriptInfo.SetAuthor("w00tguy");
+	g_Module.ScriptInfo.SetContactInfo("https://github.com/wootguy");
+	g_Hooks.RegisterHook(Hooks::Player::ClientDisconnect, @ClientLeave);
+	g_Hooks.RegisterHook(Hooks::Player::ClientSay, @ClientSay);
+	g_Hooks.RegisterHook(Hooks::Game::MapChange, @MapChange);
 
-    @g_SecondsUntilVote = CCVar("secondsUntilVote", 120, "Delay before players can RTV after map has started", ConCommandFlag::AdminOnly);
-    @g_MaxMapsToVote = CCVar("iMaxMaps", 9, "How many maps can players nominate and vote for later", ConCommandFlag::AdminOnly);
-    @g_VotingPeriodTime = CCVar("secondsToVote", 11, "How long can players vote for a map before a map is chosen", ConCommandFlag::AdminOnly);
-    @g_PercentageRequired = CCVar("iPercentReq", 66, "0-100, percent of players required to RTV before voting happens", ConCommandFlag::AdminOnly);
-    @g_ExcludePrevMaps = CCVar("iExcludePrevMaps", 800, "How many maps to previous maps to remember", ConCommandFlag::AdminOnly);
-    @g_ExcludePrevMapsNom = CCVar("iExcludePrevMapsNomOnly", 20, "Exclude recently played maps from nominations", ConCommandFlag::AdminOnly);
-    @g_ExcludePrevMapsNomMeme = CCVar("iExcludePrevMapsNomOnlyMeme", 400, "Exclude recently played maps from nominations (hidden maps)", ConCommandFlag::AdminOnly);
+	@g_SecondsUntilVote = CCVar("secondsUntilVote", 120, "Delay before players can RTV after map has started", ConCommandFlag::AdminOnly);
+	@g_MaxMapsToVote = CCVar("iMaxMaps", 9, "How many maps can players nominate and vote for later", ConCommandFlag::AdminOnly);
+	@g_VotingPeriodTime = CCVar("secondsToVote", 11, "How long can players vote for a map before a map is chosen", ConCommandFlag::AdminOnly);
+	@g_PercentageRequired = CCVar("iPercentReq", 66, "0-100, percent of players required to RTV before voting happens", ConCommandFlag::AdminOnly);
+	@g_ExcludePrevMaps = CCVar("iExcludePrevMaps", 800, "How many maps to previous maps to remember", ConCommandFlag::AdminOnly);
+	@g_ExcludePrevMapsNom = CCVar("iExcludePrevMapsNomOnly", 20, "Exclude recently played maps from nominations", ConCommandFlag::AdminOnly);
+	@g_ExcludePrevMapsNomMeme = CCVar("iExcludePrevMapsNomOnlyMeme", 400, "Exclude recently played maps from nominations (hidden maps)", ConCommandFlag::AdminOnly);
 
 	reset();
 	
@@ -79,13 +79,13 @@ void PluginInit() {
 }
 
 void MapInit() {
-    g_SoundSystem.PrecacheSound("fvox/one.wav");
-    g_SoundSystem.PrecacheSound("fvox/two.wav");
-    g_SoundSystem.PrecacheSound("fvox/three.wav");
-    g_SoundSystem.PrecacheSound("fvox/four.wav");
-    g_SoundSystem.PrecacheSound("fvox/five.wav");
-    g_SoundSystem.PrecacheSound("gman/gman_choose1.wav");
-    g_SoundSystem.PrecacheSound("gman/gman_choose2.wav");
+	g_SoundSystem.PrecacheSound("fvox/one.wav");
+	g_SoundSystem.PrecacheSound("fvox/two.wav");
+	g_SoundSystem.PrecacheSound("fvox/three.wav");
+	g_SoundSystem.PrecacheSound("fvox/four.wav");
+	g_SoundSystem.PrecacheSound("fvox/five.wav");
+	g_SoundSystem.PrecacheSound("gman/gman_choose1.wav");
+	g_SoundSystem.PrecacheSound("gman/gman_choose2.wav");
 	
 	reset();
 	
@@ -118,19 +118,19 @@ void print(string text) { g_Game.AlertMessage( at_console, text); }
 void println(string text) { print(text + "\n"); }
 
 void delay_print(EHandle h_plr, string message) {
-    CBasePlayer @ plr = cast < CBasePlayer @ > (h_plr.GetEntity());
-    if (plr !is null) {
-        g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, message);
-    }
+	CBasePlayer @ plr = cast < CBasePlayer @ > (h_plr.GetEntity());
+	if (plr !is null) {
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, message);
+	}
 }
 
 void delay_print(EHandle h_plr, array<string> messages) {
-    CBasePlayer @ plr = cast<CBasePlayer@>(h_plr.GetEntity());
-    if (plr !is null) {
-        for (uint i = 0; i < messages.size(); i++) {
-            g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, messages[i]);
-        }
-    }
+	CBasePlayer @ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+	if (plr !is null) {
+		for (uint i = 0; i < messages.size(); i++) {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, messages[i]);
+		}
+	}
 }
 
 void playSoundGlobal(string file, float volume, int pitch) {
@@ -221,7 +221,7 @@ int getHighestVotecount() {
 
 void updateVoteMenu() {
 	@g_rtvMenu = CTextMenu(@rtvMenuCallback);
-    g_rtvMenu.SetTitle("\\yRTV Vote");
+	g_rtvMenu.SetTitle("\\yRTV Vote");
 	
 	int bestVotes = getHighestVotecount();
 	bool anyoneVoted = bestVotes > -1;
@@ -239,24 +239,24 @@ void updateVoteMenu() {
 			if (voteCount == bestVotes) {
 				label = "\\w" + label + "\\w";
 			}
-			label += "   \\d(" + voteCount + ")\\w";
+			label += "	 \\d(" + voteCount + ")\\w";
 		} else {
 			label = (anyoneVoted ? "\\r" : "\\w") + label;
 		}
 		label += "\\y";
 		
 		g_rtvMenu.AddItem(label, any(thisOption));
-    }
+	}
 
-    g_rtvMenu.Register();
+	g_rtvMenu.Register();
 
-    for (int i = 1; i <= g_Engine.maxClients; i++) {
-        CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
+	for (int i = 1; i <= g_Engine.maxClients; i++) {
+		CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
 
-        if (plr !is null) {
-            g_rtvMenu.Open(0, 0, plr);
-        }
-    }
+		if (plr !is null) {
+			g_rtvMenu.Open(0, 0, plr);
+		}
+	}
 }
 
 void fillRtvList() {
@@ -482,9 +482,9 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 			
 			@g_nomMenus[eidx] = CTextMenu(@nomMenuCallback);
 			
-			string title = "\\yMaps containing \"" + mapname + "\"   ";
+			string title = "\\yMaps containing \"" + mapname + "\"	 ";
 			if (fullNomMenu) {
-				title = "\\yNominate...   ";
+				title = "\\yNominate...	  ";
 			}
 			g_nomMenus[eidx].SetTitle(title);
 			
@@ -493,7 +493,7 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 				
 				int mapsLeft = getMapExcludeTime(similarNames[i]);
 				if (mapsLeft > 0) {
-					label = "\\r" + label + "   \\d(" + mapsLeft + ")\\y";
+					label = "\\r" + label + "	\\d(" + mapsLeft + ")\\y";
 				} else {
 					label = "\\w" + label;
 				}
@@ -594,20 +594,20 @@ void sendPastMapList(CBasePlayer@ plr) {
 	if (int(g_previousMaps.length()) > g_ExcludePrevMapsNom.GetInt()) {
 		start = g_previousMaps.length() - g_ExcludePrevMapsNom.GetInt();
 	}
-    
-    g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "--Past maplist---------------\n");
-    for (uint i = start; i < g_previousMaps.length(); i++) {
-       g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, " " + ((i-start) + 1) +  ": "  + g_previousMaps[i] + "\n");
-    }
-    g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "-----------------------------\n");
+	
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "--Past maplist---------------\n");
+	for (uint i = start; i < g_previousMaps.length(); i++) {
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, " " + ((i-start) + 1) +	 ": "  + g_previousMaps[i] + "\n");
+	}
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "-----------------------------\n");
 }
 
 void sendPastMapList_full(CBasePlayer@ plr) {
-    g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "--Past maplist---------------\n");
-    for (uint i = 0; i < g_previousMaps.length(); i++) {
-       g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, " " + (i + 1) +  ": "  + g_previousMaps[i] + "\n");
-    }
-    g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "-----------------------------\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "--Past maplist---------------\n");
+	for (uint i = 0; i < g_previousMaps.length(); i++) {
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, " " + (i + 1) +	 ": "  + g_previousMaps[i] + "\n");
+	}
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "-----------------------------\n");
 }
 
 array<string> loadMapList(string path, bool ignoreDuplicates=false) {
@@ -676,68 +676,68 @@ void loadAllMapLists() {
 	g_randomMapChoices.resize(0);
 	
 	for (uint i = 0; i < g_normalMaps.size(); i++) {
-        g_everyMap.insertLast(g_normalMaps[i]);
+		g_everyMap.insertLast(g_normalMaps[i]);
 		
-        if (g_normalMaps[i].Length() > g_maxNomMapNameLength) {
-            g_maxNomMapNameLength = g_normalMaps[i].Length();
-        }
+		if (g_normalMaps[i].Length() > g_maxNomMapNameLength) {
+			g_maxNomMapNameLength = g_normalMaps[i].Length();
+		}
 		if (!g_prevMapPosition.exists(g_normalMaps[i])) {
 			g_randomMapChoices.insertLast(g_normalMaps[i]);
 		}
-    }
+	}
 
-    for (uint i = 0; i < g_hiddenMaps.size(); i++) {
-        g_everyMap.insertLast(g_hiddenMaps[i]);
+	for (uint i = 0; i < g_hiddenMaps.size(); i++) {
+		g_everyMap.insertLast(g_hiddenMaps[i]);
 		g_memeMapsHashed[g_hiddenMaps[i]] = true;
 		
-        if (g_hiddenMaps[i].Length() > g_maxNomMapNameLength) {
-            g_maxNomMapNameLength = g_hiddenMaps[i].Length();
-        }
-    }
+		if (g_hiddenMaps[i].Length() > g_maxNomMapNameLength) {
+			g_maxNomMapNameLength = g_hiddenMaps[i].Length();
+		}
+	}
 
-    g_everyMap.sortAsc();
+	g_everyMap.sortAsc();
 }
 
 void writePreviousMapsList() {
-    string mapname = string(g_Engine.mapname).ToLowercase();
+	string mapname = string(g_Engine.mapname).ToLowercase();
 
-    if (g_PlayerFuncs.GetNumPlayers() < 4 && false) {
-        g_Log.PrintF("[RTV] Not writing previous map - less than 4 players\n");
-        return;
-    }
-    if (g_normalMaps.find(mapname) < 0 && g_hiddenMaps.find(mapname) < 0) {
-        g_Log.PrintF("[RTV] Not writing previous map - " + mapname + " not in vote list(s)\n");
-        return; // prevent maps in a series from being added to the list
-    }
+	if (g_PlayerFuncs.GetNumPlayers() < 4 && false) {
+		g_Log.PrintF("[RTV] Not writing previous map - less than 4 players\n");
+		return;
+	}
+	if (g_normalMaps.find(mapname) < 0 && g_hiddenMaps.find(mapname) < 0) {
+		g_Log.PrintF("[RTV] Not writing previous map - " + mapname + " not in vote list(s)\n");
+		return; // prevent maps in a series from being added to the list
+	}
 
-    if (g_lastMapName == mapname) {
-        g_Log.PrintF("[RTV] Not writing previous map - restarts are not counted\n");
-        return; // don't count map restarts
-    }
-    g_lastMapName = mapname;
+	if (g_lastMapName == mapname) {
+		g_Log.PrintF("[RTV] Not writing previous map - restarts are not counted\n");
+		return; // don't count map restarts
+	}
+	g_lastMapName = mapname;
 
-    g_previousMaps.insertLast(string(g_Engine.mapname).ToLowercase());
-    while ((int(g_previousMaps.length()) > g_ExcludePrevMaps.GetInt())) {
-        g_previousMaps.removeAt(0);
-    }
+	g_previousMaps.insertLast(string(g_Engine.mapname).ToLowercase());
+	while ((int(g_previousMaps.length()) > g_ExcludePrevMaps.GetInt())) {
+		g_previousMaps.removeAt(0);
+	}
 
-    File@ f = g_FileSystem.OpenFile(previousMapsFile, OpenFile::WRITE);
+	File@ f = g_FileSystem.OpenFile(previousMapsFile, OpenFile::WRITE);
 
-    if (f.IsOpen()) {
-        int numWritten = 0;
-        for (uint i = 0; i < g_previousMaps.size(); i++) {
-            string name = g_previousMaps[i];
-            name.Trim();
-            if (name.Length() == 0) {
-                continue;
-            }
+	if (f.IsOpen()) {
+		int numWritten = 0;
+		for (uint i = 0; i < g_previousMaps.size(); i++) {
+			string name = g_previousMaps[i];
+			name.Trim();
+			if (name.Length() == 0) {
+				continue;
+			}
 
-            f.Write(name + "\n");
-        }
-        f.Close();
-    }
+			f.Write(name + "\n");
+		}
+		f.Close();
+	}
 	else
-        g_Log.PrintF("Failed to open previous maps file: " + previousMapsFile + "\n");
+		g_Log.PrintF("Failed to open previous maps file: " + previousMapsFile + "\n");
 }
 
 

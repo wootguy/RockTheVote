@@ -32,7 +32,8 @@ array<string> g_previousMaps;
 
 array<RtvState> g_playerStates;
 array<string> g_everyMap; // sorted combination of normal and hidden maps
-array<string> g_randomMapChoices; // normal maps which aren't in the previous map list
+array<string> g_randomRtvChoices; // normal votable maps which aren't in the previous map list
+array<string> g_randomCycleMaps; // map cycle maps which aren't in the previous map list
 array<string> g_rtvList; // maps chosen for the vote menu
 array<string> g_nomList; // maps nominated by players
 dictionary g_prevMapPosition; // maps a map name to its position in the previous map list (for faster nom menus)
@@ -89,7 +90,7 @@ void MapInit() {
 	
 	reset();
 	
-	string randomMap = g_randomMapChoices[Math.RandomLong(0, g_randomMapChoices.size()-1)];
+	string randomMap = g_randomCycleMaps[Math.RandomLong(0, g_randomCycleMaps.size()-1)];
 	println("[RTV] Random next map: " + randomMap);
 	g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + randomMap + "\n");
 }
@@ -266,16 +267,21 @@ void fillRtvList() {
 		g_rtvList.insertLast(g_nomList[i]);
 	}
 	
-	while (int(g_rtvList.size()) < g_MaxMapsToVote.GetInt() && g_rtvList.size() < 1000 && g_randomMapChoices.size() > 0) {
-		string randomMap = g_randomMapChoices[Math.RandomLong(0, g_randomMapChoices.size()-1)];
+	if (g_randomRtvChoices.size() == 0) {
+		g_Log.PrintF("[RTV] All maps are excluded by the previous map list! Make sure g_ExcludePrevMaps value is less than the total nommable maps.\n");
+		return;
+	}
+	
+	for (int failsafe = 0; failsafe < 1000; failsafe++) {	
+		if (int(g_rtvList.size()) >= g_MaxMapsToVote.GetInt()) {
+			break;
+		}
+		
+		string randomMap = g_randomRtvChoices[Math.RandomLong(0, g_randomRtvChoices.size()-1)];
 		
 		if (g_rtvList.find(randomMap) == -1) {
 			g_rtvList.insertLast(randomMap);
 		}
-	}
-	
-	if (g_randomMapChoices.size() == 0) {
-		g_Log.PrintF("[RTV] All maps are excluded by the previous map list! Make sure g_ExcludePrevMaps value is less than the total nommable maps.\n");
 	}
 }
 
@@ -417,28 +423,29 @@ void cancelRtv(CBasePlayer@ plr) {
 
 // returns number of maps needed to play before it can be nom'd
 int getMapExcludeTime(string mapname, bool printMessage=false, CBasePlayer@ plr=null) {
-	//if (g_previousMaps.find(mapname) >= 0) {
-	if (g_prevMapPosition.exists(mapname)) {
-		int lastPrevIdx = 0;
-		g_prevMapPosition.get(mapname, lastPrevIdx);
-		
-		bool isMemeMap = g_memeMapsHashed.exists(mapname);
-		int mapsAgo = g_previousMaps.size() - lastPrevIdx;
+	if (!g_prevMapPosition.exists(mapname)) {
+		return 0;
+	}
 
-		if (isMemeMap && mapsAgo < g_ExcludePrevMapsNomMeme.GetInt()) {
-			int leftToPlay = (g_ExcludePrevMapsNomMeme.GetInt() - mapsAgo) + 1;
-			if (printMessage) {
-				g_PlayerFuncs.SayText(plr, "[RTV] \"" + mapname + "\" excluded until " + leftToPlay + " other nom-able maps have been played with 4+ players (see .pastmaplistfull).\n");
-			}
-			return leftToPlay;
+	int lastPrevIdx = 0;
+	g_prevMapPosition.get(mapname, lastPrevIdx);
+	
+	bool isMemeMap = g_memeMapsHashed.exists(mapname);
+	int mapsAgo = g_previousMaps.size() - lastPrevIdx;
+
+	if (isMemeMap && mapsAgo < g_ExcludePrevMapsNomMeme.GetInt()) {
+		int leftToPlay = (g_ExcludePrevMapsNomMeme.GetInt() - mapsAgo) + 1;
+		if (printMessage) {
+			g_PlayerFuncs.SayText(plr, "[RTV] \"" + mapname + "\" excluded until " + leftToPlay + " other nom-able maps have been played with 4+ players.\n");
 		}
-		else if (!isMemeMap && mapsAgo < g_ExcludePrevMapsNom.GetInt()) {
-			int leftToPlay = (g_ExcludePrevMapsNom.GetInt() - mapsAgo) + 1;
-			if (printMessage) {
-				g_PlayerFuncs.SayText(plr, "[RTV] \"" + mapname + "\" excluded until " + leftToPlay + " other nom-able maps have been played with 4+ players (see .pastmaplist).\n");
-			}
-			return leftToPlay;
+		return leftToPlay;
+	}
+	else if (!isMemeMap && mapsAgo < g_ExcludePrevMapsNom.GetInt()) {
+		int leftToPlay = (g_ExcludePrevMapsNom.GetInt() - mapsAgo) + 1;
+		if (printMessage) {
+			g_PlayerFuncs.SayText(plr, "[RTV] \"" + mapname + "\" excluded until " + leftToPlay + " other nom-able maps have been played with 4+ players.\n");
 		}
+		return leftToPlay;
 	}
 	
 	return 0;
@@ -454,6 +461,36 @@ void nomMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTextMen
 	tryNominate(plr, nomChoice);
 }
 
+void openNomMenu(CBasePlayer@ plr, string mapfilter, array<string> maps) {
+	int eidx = plr.entindex();
+			
+	@g_nomMenus[eidx] = CTextMenu(@nomMenuCallback);
+	
+	string title = "\\yMaps containing \"" + mapfilter + "\"	 ";
+	if (mapfilter.Length() == 0) {
+		title = "\\yNominate...	  ";
+	}
+	g_nomMenus[eidx].SetTitle(title);
+	
+	for (uint i = 0; i < maps.size(); i++) {
+		string label = maps[i] + "\\y";
+		
+		int mapsLeft = getMapExcludeTime(maps[i]);
+		if (mapsLeft > 0) {
+			label = "\\r" + label + "	\\d(" + mapsLeft + ")\\y";
+		} else {
+			label = "\\w" + label;
+		}
+		
+		g_nomMenus[eidx].AddItem(label, any(maps[i]));
+	}
+	
+	if (!(g_nomMenus[eidx].IsRegistered()))
+		g_nomMenus[eidx].Register();
+		
+	g_nomMenus[eidx].Open(0, 0, plr);
+}
+
 bool tryNominate(CBasePlayer@ plr, string mapname) {
 	if (g_voteInProgress || g_voteEnded) {
 		return false;
@@ -463,7 +500,7 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 	mapname.Replace("*", "");
 	bool fullNomMenu = mapname.Length() == 0;
 
-	if (fullNomMenu || dontAutoNom || (g_normalMaps.find(mapname) < 0 && g_hiddenMaps.find(mapname) < 0)) {
+	if (fullNomMenu || dontAutoNom || g_everyMap.find(mapname) < 0) {
 		array<string> similarNames;
 		
 		if (fullNomMenu) {
@@ -478,36 +515,10 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 		}
 		
 		if (similarNames.size() > 1) {
-			int eidx = plr.entindex();
-			
-			@g_nomMenus[eidx] = CTextMenu(@nomMenuCallback);
-			
-			string title = "\\yMaps containing \"" + mapname + "\"	 ";
-			if (fullNomMenu) {
-				title = "\\yNominate...	  ";
-			}
-			g_nomMenus[eidx].SetTitle(title);
-			
-			for (uint i = 0; i < similarNames.size(); i++) {
-				string label = similarNames[i] + "\\y";
-				
-				int mapsLeft = getMapExcludeTime(similarNames[i]);
-				if (mapsLeft > 0) {
-					label = "\\r" + label + "	\\d(" + mapsLeft + ")\\y";
-				} else {
-					label = "\\w" + label;
-				}
-				
-				g_nomMenus[eidx].AddItem(label, any(similarNames[i]));
-			}
-			
-			if (!(g_nomMenus[eidx].IsRegistered()))
-				g_nomMenus[eidx].Register();
-				
-			g_nomMenus[eidx].Open(0, 0, plr);
+			openNomMenu(plr, mapname, similarNames);
 		}
 		else if (similarNames.size() == 1) {
-			tryNominate(plr, similarNames[0]);
+			return tryNominate(plr, similarNames[0]);
 		}
 		else {
 			g_PlayerFuncs.SayText(plr, "[RTV] No maps containing \"" + mapname + "\" exist.");
@@ -516,6 +527,12 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 		return false;
 	}
 	
+	if (mapname == g_Engine.mapname) {
+		g_PlayerFuncs.SayText(plr, "[RTV] Can't nominate the current map!\n");
+		return false;
+	}
+	
+	int mapExcludeTime = getMapExcludeTime(mapname);
 	if (getMapExcludeTime(mapname, true, plr) > 0) {
 		return false;
 	}
@@ -673,7 +690,8 @@ void loadAllMapLists() {
 	}
 	
 	g_everyMap.resize(0);
-	g_randomMapChoices.resize(0);
+	g_randomRtvChoices.resize(0);
+	g_randomCycleMaps.resize(0);
 	
 	for (uint i = 0; i < g_normalMaps.size(); i++) {
 		g_everyMap.insertLast(g_normalMaps[i]);
@@ -682,7 +700,7 @@ void loadAllMapLists() {
 			g_maxNomMapNameLength = g_normalMaps[i].Length();
 		}
 		if (!g_prevMapPosition.exists(g_normalMaps[i])) {
-			g_randomMapChoices.insertLast(g_normalMaps[i]);
+			g_randomRtvChoices.insertLast(g_normalMaps[i]);
 		}
 	}
 
@@ -694,6 +712,13 @@ void loadAllMapLists() {
 			g_maxNomMapNameLength = g_hiddenMaps[i].Length();
 		}
 	}
+	
+	array<string> mapCycleMaps = g_MapCycle.GetMapCycle();
+	for (uint i = 0; i < mapCycleMaps.size(); i++) {
+		if (!g_prevMapPosition.exists(mapCycleMaps[i])) {
+			g_randomCycleMaps.insertLast(mapCycleMaps[i]);
+		}
+	}
 
 	g_everyMap.sortAsc();
 }
@@ -701,7 +726,7 @@ void loadAllMapLists() {
 void writePreviousMapsList() {
 	string mapname = string(g_Engine.mapname).ToLowercase();
 
-	if (g_PlayerFuncs.GetNumPlayers() < 4 && false) {
+	if (g_PlayerFuncs.GetNumPlayers() < 4) {
 		g_Log.PrintF("[RTV] Not writing previous map - less than 4 players\n");
 		return;
 	}
@@ -753,18 +778,6 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			tryRtv(plr);
 			return 1;
 		}
-		else if (args[0] == "unrtv") {
-			if (g_voteInProgress || g_voteEnded) {
-				g_PlayerFuncs.SayText(plr, "[RTV] Too late for that now!\n");
-			}
-			else if (g_playerStates[eidx].didRtv) {
-				g_playerStates[eidx].didRtv = false;
-				sayRtvCount();
-			} else {
-				g_PlayerFuncs.SayText(plr, "[RTV] You haven't Rocked the Vote yet!\n");
-			}
-			return 1;
-		}
 		else if (args[0] == "nom" || args[0] == "nominate") {
 			string mapname = args.ArgC() >= 2 ? args[1].ToLowercase() : "";
 			tryNominate(plr, mapname);
@@ -797,8 +810,12 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			return 2;
 		}
 		else if (isAdmin && args[0] == ".forcertv") {
-			g_PlayerFuncs.SayTextAll(plr, "[RTV] A vote has been forced by " + plr.pev.netname + "!\n");
-			startVote();
+			if (g_voteInProgress) {
+				g_PlayerFuncs.SayText(plr, "[RTV] A vote is already in progress!\n");
+			} else {
+				g_PlayerFuncs.SayTextAll(plr, "[RTV] A vote has been forced by " + plr.pev.netname + "!\n");
+				startVote();
+			}
 			return 2;
 		}
 		else if (isAdmin && args[0] == ".cancelrtv") {

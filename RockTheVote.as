@@ -9,6 +9,7 @@ CClientCommand cancelrtv("cancelrtv", "Lets admin cancel an ongoing RTV vote", @
 CClientCommand pastmaplist("pastmaplist", "Show recently played maps (up to g_ExcludePrevMapsNom)", @consoleCmd);
 CClientCommand pastmaplistfull("pastmaplistfull", "Show recently played maps (up to g_ExcludePrevMapsNomMeme)", @consoleCmd);
 CClientCommand set_nextmap( "set_nextmap", "Set the next map cycle", @consoleCmd );
+CClientCommand map( "map", "Force a map change", @consoleCmd );
 
 CCVar@ g_SecondsUntilVote;
 CCVar@ g_MaxMapsToVote;
@@ -44,6 +45,8 @@ CTextMenu@ g_rtvMenu;
 string g_lastMapName = "";
 uint g_maxNomMapNameLength = 0; // used for even spacing in the full console map list
 CScheduledFunction@ voteTimer = null;
+
+const float levelChangeDelay = 5.0f; // time in seconds to show intermission view before changing levels
 
 // Menus need to be defined globally when the plugin is loaded or else paging doesn't work.
 // Each player needs their own menu or else paging breaks when someone else opens the menu.
@@ -353,7 +356,7 @@ void finishVote() {
 	NetworkMessage message(MSG_ALL, NetworkMessages::SVC_INTERMISSION, null);
 	message.End();
 	
-	@voteTimer = g_Scheduler.SetTimeout("change_map", 5.0f, nextMap);
+	@voteTimer = g_Scheduler.SetTimeout("change_map", levelChangeDelay, nextMap);
 }
 
 
@@ -770,6 +773,16 @@ void writePreviousMapsList() {
 		g_Log.PrintF("Failed to open previous maps file: " + previousMapsFile + "\n");
 }
 
+bool rejectNonAdmin(CBasePlayer@ plr) {
+	bool isAdmin = g_PlayerFuncs.AdminLevel(plr) >= ADMIN_YES;
+	
+	if (!isAdmin) {
+		g_PlayerFuncs.SayText(plr, "[RTV] Admins only >:|\n");
+		return true;
+	}
+	
+	return false;
+}
 
 
 // return 0 = chat not handled, 1 = handled and show chat, 2 = handled and hide chat
@@ -803,7 +816,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		}
 		else if (args[0] == "listnom" || args[0] == "nomlist") {
 			if (g_nomList.size() > 0) {
-				string msg = "Current nominations: ";
+				string msg = "[RTV] Current nominations: ";
 				
 				for (uint i = 0; i < g_nomList.size(); i++) {
 					msg += (i != 0 ? ", " : "") + g_nomList[i];
@@ -828,7 +841,11 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			sendPastMapList_full(plr);
 			return 2;
 		}
-		else if (isAdmin && args[0] == ".forcertv") {
+		else if (args[0] == ".forcertv") {
+			if (rejectNonAdmin(plr)) {
+				return 2;
+			}
+			
 			if (g_voteInProgress) {
 				g_PlayerFuncs.SayText(plr, "[RTV] A vote is already in progress!\n");
 			} else {
@@ -837,19 +854,50 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			}
 			return 2;
 		}
-		else if (isAdmin && args[0] == ".cancelrtv") {
+		else if (args[0] == ".cancelrtv") {
+			if (rejectNonAdmin(plr)) {
+				return 2;
+			}
+			
 			cancelRtv(plr);
 			return 2;
 		}
-		else if (isAdmin && args[0] == ".set_nextmap") {
+		else if (args[0] == ".map") {
+			if (rejectNonAdmin(plr)) {
+				return 2;
+			}
+			
+			if (args.ArgC() < 2) {
+				g_PlayerFuncs.SayText(plr, "Usage: .map <mapname>\n");
+				return 2;
+			}
+			
+			string nextmap = args[1].ToLowercase();
+			if (!g_EngineFuncs.IsMapValid(nextmap)) {
+				g_PlayerFuncs.SayText(plr, "Map \"" + nextmap + "\" does not exist!\n");
+				return 2;
+			}
+			
+			NetworkMessage message(MSG_ALL, NetworkMessages::SVC_INTERMISSION, null);
+			message.End();
+			
+			@voteTimer = g_Scheduler.SetTimeout("change_map", levelChangeDelay, nextmap);
+			
+			g_PlayerFuncs.SayTextAll(plr, "" + plr.pev.netname + " changed map to: " + nextmap + "\n");
+		}
+		else if (args[0] == ".set_nextmap") {
+			if (rejectNonAdmin(plr)) {
+				return 2;
+			}
+			
 			if (args.ArgC() < 2) {
 				g_PlayerFuncs.SayText(plr, "Usage: .set_nextmap <mapname>\n");
 				return 2;
 			}
 			
-			string nextmap = args[1];
+			string nextmap = args[1].ToLowercase();
 			if (!g_EngineFuncs.IsMapValid(nextmap)) {
-				g_PlayerFuncs.SayText(plr, nextmap + " does not exist!\n");
+				g_PlayerFuncs.SayText(plr, "Map \"" + nextmap + "\" does not exist!\n");
 				return 2;
 			}
 			

@@ -238,9 +238,11 @@ void updateVoteMenu() {
 		string label = g_rtvList[i];
 		if (voteCount > 0) {
 			if (voteCount == bestVotes) {
-				label = "\\w" + label + "\\w";
+				label = "\\w" + label;
+			} else {
+				label = "\\r" + label;
 			}
-			label += "	 \\d(" + voteCount + ")\\w";
+			label += "  \\d(" + voteCount + ")\\w";
 		} else {
 			label = (anyoneVoted ? "\\r" : "\\w") + label;
 		}
@@ -356,27 +358,28 @@ void finishVote() {
 
 
 
-void tryRtv(CBasePlayer@ plr) {
+// return 1 = show chat, 2 = hide chat
+int tryRtv(CBasePlayer@ plr) {
 	int eidx = plr.entindex();
 	
 	if (g_voteEnded) {
-		return;
+		return 1;
 	}
 	
 	if (g_Engine.time < g_SecondsUntilVote.GetInt()) {
 		int timeLeft = int(Math.Ceil(float(g_SecondsUntilVote.GetInt()) - g_Engine.time));
 		g_PlayerFuncs.SayTextAll(plr, "[RTV] RTV will enable in " + timeLeft + " seconds.");
-		return;
+		return 1;
 	}
 
 	if (g_voteInProgress) {
 		g_rtvMenu.Open(0, 0, plr);
-		return;
+		return 2;
 	}
 	
 	if (g_playerStates[eidx].didRtv) {
 		g_PlayerFuncs.SayText(plr, "[RTV] You have already Rocked the Vote!\n");
-		return;
+		return 2;
 	}
 	
 	g_playerStates[eidx].didRtv = true;
@@ -386,6 +389,8 @@ void tryRtv(CBasePlayer@ plr) {
 	} else {
 		sayRtvCount();
 	}
+	
+	return 1;
 }
 
 void sayRtvCount() {
@@ -767,7 +772,7 @@ void writePreviousMapsList() {
 
 
 
-
+// return 0 = chat not handled, 1 = handled and show chat, 2 = handled and hide chat
 int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	bool isAdmin = g_PlayerFuncs.AdminLevel(plr) >= ADMIN_YES;
 	int eidx = plr.entindex();
@@ -775,8 +780,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	if (args.ArgC() >= 1)
 	{
 		if (args[0] == "rtv") {
-			tryRtv(plr);
-			return 1;
+			return tryRtv(plr);
 		}
 		else if (args[0] == "nom" || args[0] == "nominate") {
 			string mapname = args.ArgC() >= 2 ? args[1].ToLowercase() : "";
@@ -797,9 +801,24 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			}
 			return 2;
 		}
+		else if (args[0] == "listnom" || args[0] == "nomlist") {
+			if (g_nomList.size() > 0) {
+				string msg = "Current nominations: ";
+				
+				for (uint i = 0; i < g_nomList.size(); i++) {
+					msg += (i != 0 ? ", " : "") + g_nomList[i];
+				}
+				
+				g_PlayerFuncs.SayText(plr, msg + "\n");
+			} else {
+				g_PlayerFuncs.SayText(plr, "[RTV] Nothing has been nominated yet.\n");
+			}
+			
+			return 2;
+		}
 		else if (args[0] == "maplist" || args[0] == "listmaps") {
 			sendMapList(plr);
-			return 1;
+			return 2;
 		}
 		else if (args[0] == ".pastmaplist") {
 			sendPastMapList(plr);
@@ -876,8 +895,6 @@ HookReturnCode ClientLeave(CBasePlayer@ plr) {
 	else if (!g_voteEnded) {
 		if (getCurrentRtvCount() >= getRequiredRtvCount()) {
 			startVote();
-		} else if (getCurrentRtvCount() > 0) {
-			sayRtvCount();
 		}
 	}
 	

@@ -69,8 +69,8 @@ void PluginInit() {
 	g_Hooks.RegisterHook(Hooks::Player::ClientSay, @ClientSay);
 	g_Hooks.RegisterHook(Hooks::Game::MapChange, @MapChange);
 
-	@g_SecondsUntilVote = CCVar("secondsUntilVote", 120, "Delay before players can RTV after map has started", ConCommandFlag::AdminOnly);
-	@g_MaxMapsToVote = CCVar("iMaxMaps", 9, "How many maps can players nominate and vote for later", ConCommandFlag::AdminOnly);
+	@g_SecondsUntilVote = CCVar("secondsUntilVote", 0, "Delay before players can RTV after map has started", ConCommandFlag::AdminOnly);
+	@g_MaxMapsToVote = CCVar("iMaxMaps", 5, "How many maps can players nominate and vote for later", ConCommandFlag::AdminOnly);
 	@g_VotingPeriodTime = CCVar("secondsToVote", 11, "How long can players vote for a map before a map is chosen", ConCommandFlag::AdminOnly);
 	@g_PercentageRequired = CCVar("iPercentReq", 66, "0-100, percent of players required to RTV before voting happens", ConCommandFlag::AdminOnly);
 	@g_ExcludePrevMaps = CCVar("iExcludePrevMaps", 800, "How many maps to previous maps to remember", ConCommandFlag::AdminOnly);
@@ -90,6 +90,7 @@ void MapInit() {
 	g_SoundSystem.PrecacheSound("fvox/five.wav");
 	g_SoundSystem.PrecacheSound("gman/gman_choose1.wav");
 	g_SoundSystem.PrecacheSound("gman/gman_choose2.wav");
+	g_SoundSystem.PrecacheSound("buttons/blip3.wav");
 	
 	reset();
 	
@@ -153,6 +154,10 @@ void change_map(string mapname) {
 	g_EngineFuncs.ServerCommand("changelevel " + mapname + "\n");
 }
 
+void intermission() {
+	NetworkMessage message(MSG_ALL, NetworkMessages::SVC_INTERMISSION, null);
+	message.End();
+}
 
 
 int getCurrentRtvCount() {
@@ -202,7 +207,7 @@ void rtvMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTextMen
 	
 	g_playerStates[plr.entindex()].voteOption = option;
 	
-	g_Scheduler.SetTimeout("updateVoteMenu", 0);
+	g_Scheduler.SetTimeout("updateVoteMenu", 0, "");
 }
 
 // return number of votes for the map with the most votes (for highlighting/tie-breaking)
@@ -223,7 +228,7 @@ int getHighestVotecount() {
 	return bestVotes;
 }
 
-void updateVoteMenu() {
+void updateVoteMenu(string blinkMap="") {
 	@g_rtvMenu = CTextMenu(@rtvMenuCallback);
 	g_rtvMenu.SetTitle("\\yRTV Vote");
 	
@@ -239,8 +244,10 @@ void updateVoteMenu() {
 		}
 	
 		string label = g_rtvList[i];
-		if (voteCount > 0) {
-			if (voteCount == bestVotes) {
+		if (voteCount > 0 || blinkMap == label) {
+			if (blinkMap == label) {
+				label = "\\d" + label;
+			} else if (voteCount == bestVotes) {
 				label = "\\w" + label;
 			} else {
 				label = "\\r" + label;
@@ -340,7 +347,7 @@ void finishVote() {
 		}
 	}
 	
-	string nextMap = bestOptions[0];
+	string nextMap = bestOptions[0]; 
 	
 	if (bestOptions.size() > 1) {
 		nextMap = bestOptions[Math.RandomLong(0, bestOptions.size()-1)];
@@ -353,10 +360,17 @@ void finishVote() {
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + nextMap + "\" has been chosen!\n");
 	}
 	
-	NetworkMessage message(MSG_ALL, NetworkMessages::SVC_INTERMISSION, null);
-	message.End();
+	float voteResultTime = 1.5f;
 	
-	@voteTimer = g_Scheduler.SetTimeout("change_map", levelChangeDelay, nextMap);
+	// blink the selected option
+	int b = 0;
+	for (float d = 0; d < voteResultTime; d += 0.1f) {
+		g_Scheduler.SetTimeout("updateVoteMenu", d, b++ % 2 == 0 ? nextMap : "");
+	}
+	playSoundGlobal("buttons/blip3.wav", 1.0f, 70);
+	
+	g_Scheduler.SetTimeout("intermission", voteResultTime);
+	@voteTimer = g_Scheduler.SetTimeout("change_map", voteResultTime + levelChangeDelay, nextMap);
 }
 
 
@@ -522,7 +536,7 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 			}
 		}
 		
-		if (similarNames.size() > 1) {
+		if (similarNames.size() > 1 || dontAutoNom) {
 			openNomMenu(plr, mapname, similarNames);
 		}
 		else if (similarNames.size() == 1) {
@@ -707,7 +721,7 @@ void loadAllMapLists() {
 		if (g_normalMaps[i].Length() > g_maxNomMapNameLength) {
 			g_maxNomMapNameLength = g_normalMaps[i].Length();
 		}
-		if (!g_prevMapPosition.exists(g_normalMaps[i])) {
+		if (!g_prevMapPosition.exists(g_normalMaps[i]) and g_normalMaps[i] != g_Engine.mapname) {
 			g_randomRtvChoices.insertLast(g_normalMaps[i]);
 		}
 	}
@@ -723,7 +737,7 @@ void loadAllMapLists() {
 	
 	array<string> mapCycleMaps = g_MapCycle.GetMapCycle();
 	for (uint i = 0; i < mapCycleMaps.size(); i++) {
-		if (!g_prevMapPosition.exists(mapCycleMaps[i])) {
+		if (!g_prevMapPosition.exists(mapCycleMaps[i]) and mapCycleMaps[i] != g_Engine.mapname) {
 			g_randomCycleMaps.insertLast(mapCycleMaps[i]);
 		}
 	}
@@ -800,7 +814,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			tryNominate(plr, mapname);
 			return 2;
 		}
-		else if (args[0] == "unnom") {
+		else if (args[0] == "unnom" || args[0] == "unom" || args[0] == "denom") {
 			RtvState@ state = g_playerStates[plr.entindex()];
 			if (g_voteInProgress || g_voteEnded) {
 				g_PlayerFuncs.SayText(plr, "[RTV] Too late for that now!\n");
@@ -814,7 +828,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			}
 			return 2;
 		}
-		else if (args[0] == "listnom" || args[0] == "nomlist") {
+		else if (args[0] == "listnom" || args[0] == "nomlist" || args[0] == "lnom" || args[0] == "noms") {
 			if (g_nomList.size() > 0) {
 				string msg = "[RTV] Current nominations: ";
 				

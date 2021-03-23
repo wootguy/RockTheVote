@@ -364,7 +364,7 @@ void finishVote() {
 	
 	// blink the selected option
 	int b = 0;
-	for (float d = 0; d < voteResultTime; d += 0.1f) {
+	for (float d = 0; d < voteResultTime; d += 0.25f) {
 		g_Scheduler.SetTimeout("updateVoteMenu", d, b++ % 2 == 0 ? nextMap : "");
 	}
 	playSoundGlobal("buttons/blip3.wav", 1.0f, 70);
@@ -383,15 +383,15 @@ int tryRtv(CBasePlayer@ plr) {
 		return 1;
 	}
 	
+	if (g_voteInProgress) {
+		g_rtvMenu.Open(0, 0, plr);
+		return 2;
+	}
+	
 	if (g_Engine.time < g_SecondsUntilVote.GetInt()) {
 		int timeLeft = int(Math.Ceil(float(g_SecondsUntilVote.GetInt()) - g_Engine.time));
 		g_PlayerFuncs.SayTextAll(plr, "[RTV] RTV will enable in " + timeLeft + " seconds.");
 		return 1;
-	}
-
-	if (g_voteInProgress) {
-		g_rtvMenu.Open(0, 0, plr);
-		return 2;
 	}
 	
 	if (g_playerStates[eidx].didRtv) {

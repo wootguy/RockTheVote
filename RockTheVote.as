@@ -715,7 +715,21 @@ void loadAllMapLists() {
 	g_randomRtvChoices.resize(0);
 	g_randomCycleMaps.resize(0);
 	
+	for (uint i = 0; i < g_hiddenMaps.size(); i++) {
+		g_everyMap.insertLast(g_hiddenMaps[i]);
+		g_memeMapsHashed[g_hiddenMaps[i]] = true;
+		
+		if (g_hiddenMaps[i].Length() > g_maxNomMapNameLength) {
+			g_maxNomMapNameLength = g_hiddenMaps[i].Length();
+		}
+	}
+	
 	for (uint i = 0; i < g_normalMaps.size(); i++) {
+		if (g_memeMapsHashed.exists(g_normalMaps[i])) {
+			g_Log.PrintF("[RTV] Map \"" + g_normalMaps[i] + "\" should either be in mapvote.cfg or hidden_maps_list.txt, but not both.\n");
+			continue;
+		}
+	
 		g_everyMap.insertLast(g_normalMaps[i]);
 		
 		if (g_normalMaps[i].Length() > g_maxNomMapNameLength) {
@@ -723,15 +737,6 @@ void loadAllMapLists() {
 		}
 		if (!g_prevMapPosition.exists(g_normalMaps[i]) and g_normalMaps[i] != g_Engine.mapname) {
 			g_randomRtvChoices.insertLast(g_normalMaps[i]);
-		}
-	}
-
-	for (uint i = 0; i < g_hiddenMaps.size(); i++) {
-		g_everyMap.insertLast(g_hiddenMaps[i]);
-		g_memeMapsHashed[g_hiddenMaps[i]] = true;
-		
-		if (g_hiddenMaps[i].Length() > g_maxNomMapNameLength) {
-			g_maxNomMapNameLength = g_hiddenMaps[i].Length();
 		}
 	}
 	

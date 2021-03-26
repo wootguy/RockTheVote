@@ -42,7 +42,6 @@ dictionary g_memeMapsHashed; // for faster meme map checks
 bool g_voteInProgress = false;
 bool g_voteEnded = false;
 CTextMenu@ g_rtvMenu;
-string g_lastMapName = "";
 uint g_maxNomMapNameLength = 0; // used for even spacing in the full console map list
 CScheduledFunction@ voteTimer = null;
 
@@ -78,8 +77,6 @@ void PluginInit() {
 	@g_ExcludePrevMapsNomMeme = CCVar("iExcludePrevMapsNomOnlyMeme", 400, "Exclude recently played maps from nominations (hidden maps)", ConCommandFlag::AdminOnly);
 
 	reset();
-	
-	g_lastMapName = g_Engine.mapname;
 }
 
 void MapInit() {
@@ -536,14 +533,14 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 			}
 		}
 		
-		if (similarNames.size() > 1 || dontAutoNom) {
+		if (similarNames.size() == 0) {
+			g_PlayerFuncs.SayText(plr, "[RTV] No maps containing \"" + mapname + "\" exist.");
+		}
+		else if (similarNames.size() > 1 || dontAutoNom) {
 			openNomMenu(plr, mapname, similarNames);
 		}
 		else if (similarNames.size() == 1) {
 			return tryNominate(plr, similarNames[0]);
-		}
-		else {
-			g_PlayerFuncs.SayText(plr, "[RTV] No maps containing \"" + mapname + "\" exist.");
 		}
 		
 		return false;
@@ -762,11 +759,10 @@ void writePreviousMapsList() {
 		return; // prevent maps in a series from being added to the list
 	}
 
-	if (g_lastMapName == mapname) {
+	if (g_previousMaps.size() > 0 and g_previousMaps[g_previousMaps.size()-1] == mapname) {
 		g_Log.PrintF("[RTV] Not writing previous map - restarts are not counted\n");
 		return; // don't count map restarts
 	}
-	g_lastMapName = mapname;
 
 	g_previousMaps.insertLast(string(g_Engine.mapname).ToLowercase());
 	while ((int(g_previousMaps.length()) > g_ExcludePrevMaps.GetInt())) {
@@ -959,7 +955,7 @@ HookReturnCode ClientLeave(CBasePlayer@ plr) {
 	if (g_voteInProgress) {
 		updateVoteMenu();
 	}
-	else if (!g_voteEnded) {
+	else if (!g_voteEnded && g_Engine.time > g_SecondsUntilVote.GetInt()) {
 		if (getCurrentRtvCount() >= getRequiredRtvCount()) {
 			startVote();
 		}

@@ -1,7 +1,8 @@
+#include "MenuVote"
+
 class RtvState {
 	bool didRtv = false;	// player wants to rock the vote?
 	string nom; 			// what map this player nominated
-	int voteOption = 0;		// which option in the rtv menu was voted for
 	int afkTime = 0;		// AFK players ignored for rtv requirement
 }
 
@@ -36,15 +37,12 @@ array<RtvState> g_playerStates;
 array<string> g_everyMap; // sorted combination of normal and hidden maps
 array<string> g_randomRtvChoices; // normal votable maps which aren't in the previous map list
 array<string> g_randomCycleMaps; // map cycle maps which aren't in the previous map list
-array<string> g_rtvList; // maps chosen for the vote menu
 array<string> g_nomList; // maps nominated by players
 dictionary g_prevMapPosition; // maps a map name to its position in the previous map list (for faster nom menus)
 dictionary g_memeMapsHashed; // for faster meme map checks
-bool g_voteInProgress = false;
-bool g_voteEnded = false;
-CTextMenu@ g_rtvMenu;
+MenuVote::MenuVote g_vote;
 uint g_maxNomMapNameLength = 0; // used for even spacing in the full console map list
-CScheduledFunction@ voteTimer = null;
+CScheduledFunction@ g_timer = null;
 
 const float levelChangeDelay = 5.0f; // time in seconds to show intermission view before changing levels
 
@@ -79,7 +77,7 @@ void PluginInit() {
 
 	reset();
 	
-	g_Scheduler.SetInterval("loadCrossPluginAfkState", 1.0f, -1);
+	g_Scheduler.SetInterval("autoStartRtvCheck", 1.0f, -1);
 }
 
 void MapInit() {
@@ -101,25 +99,23 @@ void MapInit() {
 
 HookReturnCode MapChange() {
 	writePreviousMapsList();
-	g_Scheduler.RemoveTimer(voteTimer);
+	g_Scheduler.RemoveTimer(g_timer);
 	return HOOK_CONTINUE;
 }
 
 void reset() {
 	g_playerStates.resize(0);
 	g_playerStates.resize(33);
-	g_rtvList.resize(0);
 	g_nomList.resize(0);
-	g_voteInProgress = false;
-	g_voteEnded = false;
-	g_Scheduler.RemoveTimer(voteTimer);
+	g_Scheduler.RemoveTimer(g_timer);
 	loadAllMapLists();
+	g_vote.reset();
 }
 
 void loadCrossPluginAfkState() {
 	CBaseEntity@ afkEnt = g_EntityFuncs.FindEntityByTargetname(null, "PlayerStatusPlugin");
 	
-	if (afkEnt is null) {
+	if (afkEnt !is null) {
 		return;
 	}
 	
@@ -132,7 +128,11 @@ void loadCrossPluginAfkState() {
 			g_playerStates[i].afkTime = key.GetInteger();
 		}
 	}
-	
+}
+
+void autoStartRtvCheck() {
+	loadCrossPluginAfkState();
+
 	if (canAutoStartRtv()) {
 		startVote("(vote requirement lowered to " + getRequiredRtvCount() + " due to leaving/AFK players)");
 	}
@@ -215,7 +215,7 @@ int getRequiredRtvCount() {
 }
 
 bool canAutoStartRtv() {
-	if (!g_voteEnded && !g_voteInProgress && g_Engine.time > g_SecondsUntilVote.GetInt()) {
+	if (g_vote.status == MVOTE_NOT_STARTED && g_Engine.time > g_SecondsUntilVote.GetInt()) {
 		if (getCurrentRtvCount() >= getRequiredRtvCount() and getCurrentRtvCount() > 0) {
 			return true;
 		}
@@ -224,190 +224,70 @@ bool canAutoStartRtv() {
 	return false;
 }
 
-int getOptionVotes(int option) {
-	int voteCount = 0;
-	
-	for (uint k = 0; k < g_playerStates.size(); k++) {
-		voteCount += (g_playerStates[k].voteOption == option) ? 1 : 0;
-	}
-	
-	return voteCount;
-}
-
-void rtvMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTextMenuItem@ item) {
-	if (item is null or plr is null or !plr.IsConnected() or g_voteEnded or !g_voteInProgress) {
-		return;
-	}
-
-	int option = 0;
-	item.m_pUserData.retrieve(option);
-	
-	g_playerStates[plr.entindex()].voteOption = option;
-	
-	g_Scheduler.SetTimeout("updateVoteMenu", 0, "");
-}
-
-// return number of votes for the map with the most votes (for highlighting/tie-breaking)
-int getHighestVotecount() {
-	int bestVotes = -1;
-	for (uint i = 0; i < g_rtvList.length(); i++) {
-		int voteCount = getOptionVotes(i+1);
-		
-		if (voteCount == 0) {
-			continue;
-		}
-		
-		if (voteCount > bestVotes) {
-			bestVotes = voteCount;
-		}
-	}
-	
-	return bestVotes;
-}
-
-void updateVoteMenu(string blinkMap="") {
-	@g_rtvMenu = CTextMenu(@rtvMenuCallback);
-	g_rtvMenu.SetTitle("\\yRTV vote");
-	
-	int bestVotes = getHighestVotecount();
-	bool anyoneVoted = bestVotes > -1;
-	
-	for (uint i = 0; i < g_rtvList.length(); i++) {
-		int voteCount = 0;
-		int thisOption = i+1;
-		
-		for (uint k = 0; k < g_playerStates.size(); k++) {
-			voteCount += (g_playerStates[k].voteOption == thisOption) ? 1 : 0;
-		}
-	
-		string label = g_rtvList[i];
-		if (voteCount > 0 || blinkMap == label) {
-			if (blinkMap == label) {
-				label = "\\d" + label;
-			} else if (voteCount == bestVotes) {
-				label = "\\w" + label;
-			} else {
-				label = "\\r" + label;
-			}
-			label += "  \\d(" + voteCount + ")\\w";
-		} else {
-			label = (anyoneVoted ? "\\r" : "\\w") + label;
-		}
-		label += "\\y";
-		
-		g_rtvMenu.AddItem(label, any(thisOption));
-	}
-
-	g_rtvMenu.Register();
-
-	for (int i = 1; i <= g_Engine.maxClients; i++) {
-		CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
-
-		if (plr !is null) {
-			g_rtvMenu.Open(0, 0, plr);
-		}
-	}
-}
-
-void fillRtvList() {
-	g_rtvList.resize(0);
+array<string> generateRtvList() {
+	array<string> rtvList;
 	
 	for (uint i = 0; i < g_nomList.size(); i++) {
-		g_rtvList.insertLast(g_nomList[i]);
+		rtvList.insertLast(g_nomList[i]);
 	}
 	
 	if (g_randomRtvChoices.size() == 0) {
 		g_Log.PrintF("[RTV] All maps are excluded by the previous map list! Make sure g_ExcludePrevMaps value is less than the total nommable maps.\n");
-		return;
+		return rtvList;
 	}
 	
 	for (int failsafe = 0; failsafe < 1000; failsafe++) {	
-		if (int(g_rtvList.size()) >= g_MaxMapsToVote.GetInt()) {
+		if (int(rtvList.size()) >= g_MaxMapsToVote.GetInt()) {
 			break;
 		}
 		
 		string randomMap = g_randomRtvChoices[Math.RandomLong(0, g_randomRtvChoices.size()-1)];
 		
-		if (g_rtvList.find(randomMap) == -1) {
-			g_rtvList.insertLast(randomMap);
+		if (rtvList.find(randomMap) == -1) {
+			rtvList.insertLast(randomMap);
 		}
 	}
+	
+	return rtvList;
 }
 
 void startVote(string reason="") {
-	fillRtvList();
-	g_voteInProgress = true;
-	g_voteEnded = false;
+	MenuVoteParams voteParams;
+	voteParams.title = "RTV Vote";
+	voteParams.options = generateRtvList();
+	voteParams.voteTime = g_VotingPeriodTime.GetInt();
+	@voteParams.thinkCallback = @voteThinkCallback;
+	@voteParams.finishCallback = @voteFinishCallback;
+	
+	g_vote.start(voteParams);
 	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] Vote started! " + reason + "\n");
-	updateVoteMenu();
-	@voteTimer = g_Scheduler.SetTimeout("voteThink", 0.0f, g_VotingPeriodTime.GetInt(), g_VotingPeriodTime.GetInt());
 }
 
-void voteThink(int secondsLeft, int startSeconds) {
-	if (!g_voteInProgress) {
-		return; // cancelled
-	}
-
-	if (secondsLeft == startSeconds)	{ playSoundGlobal("gman/gman_choose1.wav", 1.0f, 100); }
-	else if (secondsLeft == 8)			{ playSoundGlobal("gman/gman_choose2.wav", 1.0f, 100); }
-	else if (secondsLeft == 5)			{ playSoundGlobal("fvox/five.wav", 0.8f, 85); }
-	else if (secondsLeft == 4)			{ playSoundGlobal("fvox/four.wav", 0.8f, 85); }
-	else if (secondsLeft == 3)			{ playSoundGlobal("fvox/three.wav", 0.8f, 85); }
-	else if (secondsLeft == 2)			{ playSoundGlobal("fvox/two.wav", 0.8f, 85); }
-	else if (secondsLeft == 1)			{ playSoundGlobal("fvox/one.wav", 0.8f, 85); }
+void voteThinkCallback(int secondsLeft) {
+	int voteTime = g_VotingPeriodTime.GetInt();
+	
+	if (secondsLeft == voteTime)	{ playSoundGlobal("gman/gman_choose1.wav", 1.0f, 100); }
+	else if (secondsLeft == 8)		{ playSoundGlobal("gman/gman_choose2.wav", 1.0f, 100); }
+	else if (secondsLeft == 5)		{ playSoundGlobal("fvox/five.wav", 0.8f, 85); }
+	else if (secondsLeft == 4)		{ playSoundGlobal("fvox/four.wav", 0.8f, 85); }
+	else if (secondsLeft == 3)		{ playSoundGlobal("fvox/three.wav", 0.8f, 85); }
+	else if (secondsLeft == 2)		{ playSoundGlobal("fvox/two.wav", 0.8f, 85); }
+	else if (secondsLeft == 1)		{ playSoundGlobal("fvox/one.wav", 0.8f, 85); }
 
 	g_PlayerFuncs.ClientPrintAll(HUD_PRINTCENTER, string(secondsLeft) + " seconds left to vote");
-	
-	if (secondsLeft > 1 && g_voteInProgress) {
-		@voteTimer = g_Scheduler.SetTimeout("voteThink", 1.0f, secondsLeft-1, startSeconds);
-	} else {
-		@voteTimer = g_Scheduler.SetTimeout("finishVote", 1.0f);
-	}
 }
 
-void finishVote() {
-	if (!g_voteInProgress) {
-		return; // vote cancelled
-	}
-
-	g_PlayerFuncs.ClientPrintAll(HUD_PRINTCENTER, "");
-	g_voteEnded = true;
-	
-	array<string> bestOptions;
-	
-	int bestVotes = getHighestVotecount();	
-	for (uint i = 0; i < g_rtvList.length(); i++) {
-		int voteCount = getOptionVotes(i+1);
-		
-		if (voteCount >= bestVotes) {
-			bestOptions.insertLast(g_rtvList[i]);
-		}
-	}
-	
-	string nextMap = bestOptions[0]; 
-	
-	if (bestOptions.size() > 1) {
-		nextMap = bestOptions[Math.RandomLong(0, bestOptions.size()-1)];
-		if (bestVotes == -1) {
-			g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + nextMap + "\" has been randomly chosen since nobody picked.\n");
-		} else {
-			g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + nextMap + "\" has been randomly chosen amongst the tied.\n");
-		}
+void voteFinishCallback(string chosenOption, int resultReason) {	
+	if (resultReason == MVOTE_RESULT_TIED) {
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + chosenOption + "\" has been randomly chosen amongst the tied.\n");
+	} else if (resultReason == MVOTE_RESULT_NO_VOTES) {
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + chosenOption + "\" has been randomly chosen since nobody picked.\n");
 	} else {
-		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + nextMap + "\" has been chosen!\n");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + chosenOption + "\" has been chosen!\n");
 	}
 	
-	float voteResultTime = 1.5f;
-	
-	// blink the selected option
-	int b = 0;
-	for (float d = 0; d < voteResultTime; d += 0.25f) {
-		g_Scheduler.SetTimeout("updateVoteMenu", d, b++ % 2 == 0 ? nextMap : "");
-	}
-	playSoundGlobal("buttons/blip3.wav", 1.0f, 70);
-	
-	g_Scheduler.SetTimeout("intermission", voteResultTime);
-	@voteTimer = g_Scheduler.SetTimeout("change_map", voteResultTime + levelChangeDelay, nextMap);
+	g_Scheduler.SetTimeout("intermission", MenuVote::g_resultTime);
+	@g_timer = g_Scheduler.SetTimeout("change_map", MenuVote::g_resultTime + levelChangeDelay, chosenOption);
 }
 
 
@@ -416,12 +296,12 @@ void finishVote() {
 int tryRtv(CBasePlayer@ plr) {
 	int eidx = plr.entindex();
 	
-	if (g_voteEnded) {
+	if (g_vote.status == MVOTE_FINISHED) {
 		return 1;
 	}
 	
-	if (g_voteInProgress) {
-		g_rtvMenu.Open(0, 0, plr);
+	if (g_vote.status == MVOTE_IN_PROGRESS) {
+		g_vote.reopen(plr);
 		return 2;
 	}
 	
@@ -452,30 +332,16 @@ void sayRtvCount() {
 }
 
 void cancelRtv(CBasePlayer@ plr) {
-	if (!g_voteInProgress) {
+	if (g_vote.status != MVOTE_IN_PROGRESS) {
 		g_PlayerFuncs.SayText(plr, "[RTV] There is no vote to cancel.\n");
 		return;
 	}
 	
-	g_voteInProgress = false;
-	g_voteEnded = false;
 	for (uint i = 0; i < g_playerStates.size(); i++) {
 		g_playerStates[i].didRtv = false;
-		g_playerStates[i].voteOption = 0;
 	}
 	
-	@g_rtvMenu = CTextMenu(@rtvMenuCallback);
-	g_rtvMenu.SetTitle("\\yVote cancelled...");
-	g_rtvMenu.AddItem(" ", any(""));
-	g_rtvMenu.Register();
-
-	for (int i = 1; i <= g_Engine.maxClients; i++) {
-		CBasePlayer@ p = g_PlayerFuncs.FindPlayerByIndex(i);
-
-		if (p !is null) {
-			g_rtvMenu.Open(2, 0, p);
-		}
-	}
+	g_vote.cancel();
 	
 	g_PlayerFuncs.SayTextAll(plr, "[RTV] Vote cancelled by " + plr.pev.netname + "!\n");
 }
@@ -511,7 +377,7 @@ int getMapExcludeTime(string mapname, bool printMessage=false, CBasePlayer@ plr=
 }
 
 void nomMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTextMenuItem@ item) {
-	if (item is null or plr is null or !plr.IsConnected() or g_voteEnded or g_voteInProgress) {
+	if (item is null or plr is null or !plr.IsConnected() or g_vote.status != MVOTE_NOT_STARTED) {
 		return;
 	}
 
@@ -551,7 +417,7 @@ void openNomMenu(CBasePlayer@ plr, string mapfilter, array<string> maps) {
 }
 
 bool tryNominate(CBasePlayer@ plr, string mapname) {
-	if (g_voteInProgress || g_voteEnded) {
+	if (g_vote.status != MVOTE_NOT_STARTED) {
 		return false;
 	}
 
@@ -857,7 +723,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		}
 		else if (args[0] == "unnom" || args[0] == "unom" || args[0] == "denom") {
 			RtvState@ state = g_playerStates[plr.entindex()];
-			if (g_voteInProgress || g_voteEnded) {
+			if (g_vote.status != MVOTE_NOT_STARTED) {
 				g_PlayerFuncs.SayText(plr, "[RTV] Too late for that now!\n");
 			}
 			else if (state.nom.Length() > 0) {
@@ -901,7 +767,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 				return 2;
 			}
 			
-			if (g_voteInProgress) {
+			if (g_vote.status != MVOTE_NOT_STARTED) {
 				g_PlayerFuncs.SayText(plr, "[RTV] A vote is already in progress!\n");
 			} else {
 				startVote("(forced by " + plr.pev.netname + ")");
@@ -935,7 +801,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			NetworkMessage message(MSG_ALL, NetworkMessages::SVC_INTERMISSION, null);
 			message.End();
 			
-			@voteTimer = g_Scheduler.SetTimeout("change_map", levelChangeDelay, nextmap);
+			@g_timer = g_Scheduler.SetTimeout("change_map", levelChangeDelay, nextmap);
 			
 			g_PlayerFuncs.SayTextAll(plr, "" + plr.pev.netname + " changed map to: " + nextmap + "\n");
 		}
@@ -988,15 +854,12 @@ HookReturnCode ClientSay( SayParameters@ pParams ) {
 HookReturnCode ClientLeave(CBasePlayer@ plr) {
 	RtvState@ state = g_playerStates[plr.entindex()];
 	state.didRtv = false;
-	state.nom = "";
-	state.voteOption = 0;
 	state.afkTime = 0;
 	
-	if (g_voteInProgress) {
-		updateVoteMenu();
-	}
-	else if (canAutoStartRtv()) {
-		startVote("(vote requirement lowered to " + getRequiredRtvCount() +" due to leaving/AFK players)");
+	if (state.nom.Length() > 0) {
+		g_nomList.removeAt(g_nomList.find(state.nom));
+		g_PlayerFuncs.SayTextAll(plr, "[RTV] \"" + state.nom + "\" is no longer nominated.\n");
+		state.nom = "";
 	}
 	
 	return HOOK_CONTINUE;

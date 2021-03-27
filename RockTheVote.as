@@ -1,7 +1,8 @@
 class RtvState {
-	bool didRtv = false; // player wants to rock the vote?
-	string nom; // what map this player nominated
-	int voteOption = 0; // which option in the rtv menu was voted for
+	bool didRtv = false;	// player wants to rock the vote?
+	string nom; 			// what map this player nominated
+	int voteOption = 0;		// which option in the rtv menu was voted for
+	int afkTime = 0;		// AFK players ignored for rtv requirement
 }
 
 CClientCommand forcertv("forcertv", "Lets admin force a vote", @consoleCmd);
@@ -77,6 +78,8 @@ void PluginInit() {
 	@g_ExcludePrevMapsNomMeme = CCVar("iExcludePrevMapsNomOnlyMeme", 400, "Exclude recently played maps from nominations (hidden maps)", ConCommandFlag::AdminOnly);
 
 	reset();
+	
+	g_Scheduler.SetInterval("loadCrossPluginAfkState", 1.0f, -1);
 }
 
 void MapInit() {
@@ -111,6 +114,28 @@ void reset() {
 	g_voteEnded = false;
 	g_Scheduler.RemoveTimer(voteTimer);
 	loadAllMapLists();
+}
+
+void loadCrossPluginAfkState() {
+	CBaseEntity@ afkEnt = g_EntityFuncs.FindEntityByTargetname(null, "PlayerStatusPlugin");
+	
+	if (afkEnt is null) {
+		return;
+	}
+	
+	CustomKeyvalues@ customKeys = afkEnt.GetCustomKeyvalues();
+	
+	for ( int i = 1; i <= g_Engine.maxClients; i++ )
+	{
+		CustomKeyvalue key = customKeys.GetKeyvalue("$i_afk" + i);
+		if (key.Exists()) {
+			g_playerStates[i].afkTime = key.GetInteger();
+		}
+	}
+	
+	if (canAutoStartRtv()) {
+		startVote("(vote requirement lowered to " + getRequiredRtvCount() + " due to leaving/AFK players)");
+	}
 }
 
 
@@ -157,11 +182,12 @@ void intermission() {
 }
 
 
+
 int getCurrentRtvCount() {
 	int count = 0;
 
 	for (uint i = 0; i < g_playerStates.size(); i++) {
-		count += g_playerStates[i].didRtv ? 1 : 0;
+		count += g_playerStates[i].didRtv and g_playerStates[i].afkTime == 0 ? 1 : 0;
 	}
 	
 	return count;
@@ -177,11 +203,25 @@ int getRequiredRtvCount() {
 			continue;
 		}
 		
+		if (g_playerStates[i].afkTime > 0) {
+			continue; // PlayerStatus plugin says this player is afk
+		}
+		
 		playerCount++;
 	}
 	
 	float percent = g_PercentageRequired.GetInt() / 100.0f;
 	return int(Math.Ceil(percent * float(playerCount)));
+}
+
+bool canAutoStartRtv() {
+	if (!g_voteEnded && !g_voteInProgress && g_Engine.time > g_SecondsUntilVote.GetInt()) {
+		if (getCurrentRtvCount() >= getRequiredRtvCount() and getCurrentRtvCount() > 0) {
+			return true;
+		}
+	}
+	
+	return false;
 }
 
 int getOptionVotes(int option) {
@@ -227,7 +267,7 @@ int getHighestVotecount() {
 
 void updateVoteMenu(string blinkMap="") {
 	@g_rtvMenu = CTextMenu(@rtvMenuCallback);
-	g_rtvMenu.SetTitle("\\yRTV Vote");
+	g_rtvMenu.SetTitle("\\yRTV vote");
 	
 	int bestVotes = getHighestVotecount();
 	bool anyoneVoted = bestVotes > -1;
@@ -294,11 +334,11 @@ void fillRtvList() {
 	}
 }
 
-void startVote() {
+void startVote(string reason="") {
 	fillRtvList();
 	g_voteInProgress = true;
 	g_voteEnded = false;
-	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] You have " + g_VotingPeriodTime.GetInt() + " seconds to vote!\n");
+	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] Vote started! " + reason + "\n");
 	updateVoteMenu();
 	@voteTimer = g_Scheduler.SetTimeout("voteThink", 0.0f, g_VotingPeriodTime.GetInt(), g_VotingPeriodTime.GetInt());
 }
@@ -392,7 +432,7 @@ int tryRtv(CBasePlayer@ plr) {
 	}
 	
 	if (g_playerStates[eidx].didRtv) {
-		g_PlayerFuncs.SayText(plr, "[RTV] You have already Rocked the Vote!\n");
+		g_PlayerFuncs.SayText(plr, "[RTV] " + getCurrentRtvCount() + " of " + getRequiredRtvCount() + " players until vote starts. You already rtv'd.\n");
 		return 2;
 	}
 	
@@ -408,7 +448,7 @@ int tryRtv(CBasePlayer@ plr) {
 }
 
 void sayRtvCount() {
-	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] " + getCurrentRtvCount() + " of " + getRequiredRtvCount() + " players until vote initiates!\n");
+	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] " + getCurrentRtvCount() + " of " + getRequiredRtvCount() + " players until vote starts!\n");
 }
 
 void cancelRtv(CBasePlayer@ plr) {
@@ -437,7 +477,7 @@ void cancelRtv(CBasePlayer@ plr) {
 		}
 	}
 	
-	g_PlayerFuncs.SayTextAll(plr, "[RTV] The vote has been cancelled by " + plr.pev.netname + "!\n");
+	g_PlayerFuncs.SayTextAll(plr, "[RTV] Vote cancelled by " + plr.pev.netname + "!\n");
 }
 
 // returns number of maps needed to play before it can be nom'd
@@ -573,10 +613,10 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 	g_nomList.insertLast(mapname);
 	
 	if (oldNomMap.IsEmpty()) {
-		g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + " has nominated \"" + mapname + "\".\n");
+		g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + " nominated \"" + mapname + "\".\n");
 	} else {
 		g_nomList.removeAt(g_nomList.find(oldNomMap));
-		g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + " has changed their nomination to \"" + mapname + "\".\n");
+		g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + " changed their nomination to \"" + mapname + "\".\n");
 	}
 	
 	return true;
@@ -822,7 +862,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			}
 			else if (state.nom.Length() > 0) {
 				g_nomList.removeAt(g_nomList.find(state.nom));
-				g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + " has revoked their \"" + state.nom + "\" nomination.\n");
+				g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + " revoked their \"" + state.nom + "\" nomination.\n");
 				state.nom = "";
 			} else {
 				g_PlayerFuncs.SayText(plr, "[RTV] You haven't nominated anything yet!\n");
@@ -864,8 +904,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			if (g_voteInProgress) {
 				g_PlayerFuncs.SayText(plr, "[RTV] A vote is already in progress!\n");
 			} else {
-				g_PlayerFuncs.SayTextAll(plr, "[RTV] A vote has been forced by " + plr.pev.netname + "!\n");
-				startVote();
+				startVote("(forced by " + plr.pev.netname + ")");
 			}
 			return 2;
 		}
@@ -951,14 +990,13 @@ HookReturnCode ClientLeave(CBasePlayer@ plr) {
 	state.didRtv = false;
 	state.nom = "";
 	state.voteOption = 0;
+	state.afkTime = 0;
 	
 	if (g_voteInProgress) {
 		updateVoteMenu();
 	}
-	else if (!g_voteEnded && g_Engine.time > g_SecondsUntilVote.GetInt()) {
-		if (getCurrentRtvCount() >= getRequiredRtvCount()) {
-			startVote();
-		}
+	else if (canAutoStartRtv()) {
+		startVote("(vote requirement lowered to " + getRequiredRtvCount() +" due to leaving/AFK players)");
 	}
 	
 	return HOOK_CONTINUE;

@@ -1,4 +1,5 @@
 #include "MenuVote"
+#include "GameVotes"
 
 class RtvState {
 	bool didRtv = false;	// player wants to rock the vote?
@@ -10,8 +11,9 @@ CClientCommand forcertv("forcertv", "Lets admin force a vote", @consoleCmd);
 CClientCommand cancelrtv("cancelrtv", "Lets admin cancel an ongoing RTV vote", @consoleCmd);
 CClientCommand pastmaplist("pastmaplist", "Show recently played maps (up to g_ExcludePrevMapsNom)", @consoleCmd);
 CClientCommand pastmaplistfull("pastmaplistfull", "Show recently played maps (up to g_ExcludePrevMapsNomMeme)", @consoleCmd);
-CClientCommand set_nextmap( "set_nextmap", "Set the next map cycle", @consoleCmd );
-CClientCommand map( "map", "Force a map change", @consoleCmd );
+CClientCommand set_nextmap("set_nextmap", "Set the next map cycle", @consoleCmd);
+CClientCommand map("map", "Force a map change", @consoleCmd);
+CClientCommand vote("vote", "Start a vote or reopen the vote menu", @consoleCmd);
 
 CCVar@ g_SecondsUntilVote;
 CCVar@ g_MaxMapsToVote;
@@ -20,6 +22,7 @@ CCVar@ g_PercentageRequired;
 CCVar@ g_ExcludePrevMaps;			// limit before a map can be randomly added to the RTV menu again
 CCVar@ g_ExcludePrevMapsNom;		// limit for nomming a regular map again
 CCVar@ g_ExcludePrevMapsNomMeme;	// limit for nomming a hidden/meme map again
+CCVar@ g_EnableGameVotes;			// enable text menu replacements for the default game votes
 
 // maps that can be nominated with a normal cooldown
 const string votelistFile = "scripts/plugins/cfg/mapvote.cfg"; 
@@ -40,22 +43,11 @@ array<string> g_randomCycleMaps; // map cycle maps which aren't in the previous 
 array<string> g_nomList; // maps nominated by players
 dictionary g_prevMapPosition; // maps a map name to its position in the previous map list (for faster nom menus)
 dictionary g_memeMapsHashed; // for faster meme map checks
-MenuVote::MenuVote g_vote;
+MenuVote::MenuVote g_rtvVote;
 uint g_maxNomMapNameLength = 0; // used for even spacing in the full console map list
 CScheduledFunction@ g_timer = null;
 
 const float levelChangeDelay = 5.0f; // time in seconds to show intermission view before changing levels
-
-// Menus need to be defined globally when the plugin is loaded or else paging doesn't work.
-// Each player needs their own menu or else paging breaks when someone else opens the menu.
-// These also need to be modified directly (not via a local var reference).
-array<CTextMenu@> g_nomMenus = {
-	null, null, null, null, null, null, null, null,
-	null, null, null, null, null, null, null, null,
-	null, null, null, null, null, null, null, null,
-	null, null, null, null, null, null, null, null,
-	null
-};
 
 
 
@@ -74,6 +66,7 @@ void PluginInit() {
 	@g_ExcludePrevMaps = CCVar("iExcludePrevMaps", 800, "How many maps to previous maps to remember", ConCommandFlag::AdminOnly);
 	@g_ExcludePrevMapsNom = CCVar("iExcludePrevMapsNomOnly", 20, "Exclude recently played maps from nominations", ConCommandFlag::AdminOnly);
 	@g_ExcludePrevMapsNomMeme = CCVar("iExcludePrevMapsNomOnlyMeme", 400, "Exclude recently played maps from nominations (hidden maps)", ConCommandFlag::AdminOnly);
+	@g_EnableGameVotes = CCVar("gameVotes", 1, "Text menu replacements for the default game votes", ConCommandFlag::AdminOnly);
 
 	reset();
 	
@@ -109,7 +102,9 @@ void reset() {
 	g_nomList.resize(0);
 	g_Scheduler.RemoveTimer(g_timer);
 	loadAllMapLists();
-	g_vote.reset();
+	g_rtvVote.reset();
+	g_gameVote.reset();
+	g_lastGameVote = 0;
 }
 
 void loadCrossPluginAfkState() {
@@ -215,7 +210,7 @@ int getRequiredRtvCount() {
 }
 
 bool canAutoStartRtv() {
-	if (g_vote.status == MVOTE_NOT_STARTED && g_Engine.time > g_SecondsUntilVote.GetInt()) {
+	if (g_rtvVote.status == MVOTE_NOT_STARTED && g_Engine.time > g_SecondsUntilVote.GetInt()) {
 		if (getCurrentRtvCount() >= getRequiredRtvCount() and getCurrentRtvCount() > 0) {
 			return true;
 		}
@@ -252,14 +247,22 @@ array<string> generateRtvList() {
 }
 
 void startVote(string reason="") {
+	array<string> rtvList = generateRtvList();
+
+	array<MenuOption> menuOptions;
+	for (uint i = 0; i < rtvList.size(); i++) {
+		menuOptions.insertLast(MenuOption(rtvList[i]));
+	}
+
 	MenuVoteParams voteParams;
 	voteParams.title = "RTV Vote";
-	voteParams.options = generateRtvList();
+	voteParams.options = menuOptions;
 	voteParams.voteTime = g_VotingPeriodTime.GetInt();
+	voteParams.forceOpen = true;
 	@voteParams.thinkCallback = @voteThinkCallback;
 	@voteParams.finishCallback = @voteFinishCallback;
 	
-	g_vote.start(voteParams);
+	g_rtvVote.start(voteParams);
 	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] Vote started! " + reason + "\n");
 }
 
@@ -277,17 +280,21 @@ void voteThinkCallback(int secondsLeft) {
 	g_PlayerFuncs.ClientPrintAll(HUD_PRINTCENTER, string(secondsLeft) + " seconds left to vote");
 }
 
-void voteFinishCallback(string chosenOption, int resultReason) {	
+void voteFinishCallback(MenuOption chosenOption, int resultReason) {
+	string nextMap = chosenOption.value;
+	
 	if (resultReason == MVOTE_RESULT_TIED) {
-		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + chosenOption + "\" has been randomly chosen amongst the tied.\n");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + nextMap + "\" has been randomly chosen amongst the tied.\n");
 	} else if (resultReason == MVOTE_RESULT_NO_VOTES) {
-		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + chosenOption + "\" has been randomly chosen since nobody picked.\n");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + nextMap + "\" has been randomly chosen since nobody picked.\n");
 	} else {
-		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + chosenOption + "\" has been chosen!\n");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + nextMap + "\" has been chosen!\n");
 	}
 	
+	playSoundGlobal("buttons/blip3.wav", 1.0f, 70);
+	
 	g_Scheduler.SetTimeout("intermission", MenuVote::g_resultTime);
-	@g_timer = g_Scheduler.SetTimeout("change_map", MenuVote::g_resultTime + levelChangeDelay, chosenOption);
+	@g_timer = g_Scheduler.SetTimeout("change_map", MenuVote::g_resultTime + levelChangeDelay, nextMap);
 }
 
 
@@ -296,12 +303,12 @@ void voteFinishCallback(string chosenOption, int resultReason) {
 int tryRtv(CBasePlayer@ plr) {
 	int eidx = plr.entindex();
 	
-	if (g_vote.status == MVOTE_FINISHED) {
+	if (g_rtvVote.status == MVOTE_FINISHED) {
 		return 1;
 	}
 	
-	if (g_vote.status == MVOTE_IN_PROGRESS) {
-		g_vote.reopen(plr);
+	if (g_rtvVote.status == MVOTE_IN_PROGRESS) {
+		g_rtvVote.reopen(plr);
 		return 2;
 	}
 	
@@ -332,7 +339,7 @@ void sayRtvCount() {
 }
 
 void cancelRtv(CBasePlayer@ plr) {
-	if (g_vote.status != MVOTE_IN_PROGRESS) {
+	if (g_rtvVote.status != MVOTE_IN_PROGRESS) {
 		g_PlayerFuncs.SayText(plr, "[RTV] There is no vote to cancel.\n");
 		return;
 	}
@@ -341,7 +348,7 @@ void cancelRtv(CBasePlayer@ plr) {
 		g_playerStates[i].didRtv = false;
 	}
 	
-	g_vote.cancel();
+	g_rtvVote.cancel();
 	
 	g_PlayerFuncs.SayTextAll(plr, "[RTV] Vote cancelled by " + plr.pev.netname + "!\n");
 }
@@ -377,7 +384,7 @@ int getMapExcludeTime(string mapname, bool printMessage=false, CBasePlayer@ plr=
 }
 
 void nomMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTextMenuItem@ item) {
-	if (item is null or plr is null or !plr.IsConnected() or g_vote.status != MVOTE_NOT_STARTED) {
+	if (item is null or plr is null or !plr.IsConnected() or g_rtvVote.status != MVOTE_NOT_STARTED) {
 		return;
 	}
 
@@ -389,13 +396,13 @@ void nomMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTextMen
 void openNomMenu(CBasePlayer@ plr, string mapfilter, array<string> maps) {
 	int eidx = plr.entindex();
 			
-	@g_nomMenus[eidx] = CTextMenu(@nomMenuCallback);
+	@g_menus[eidx] = CTextMenu(@nomMenuCallback);
 	
 	string title = "\\yMaps containing \"" + mapfilter + "\"	 ";
 	if (mapfilter.Length() == 0) {
 		title = "\\yNominate...	  ";
 	}
-	g_nomMenus[eidx].SetTitle(title);
+	g_menus[eidx].SetTitle(title);
 	
 	for (uint i = 0; i < maps.size(); i++) {
 		string label = maps[i] + "\\y";
@@ -407,17 +414,17 @@ void openNomMenu(CBasePlayer@ plr, string mapfilter, array<string> maps) {
 			label = "\\w" + label;
 		}
 		
-		g_nomMenus[eidx].AddItem(label, any(maps[i]));
+		g_menus[eidx].AddItem(label, any(maps[i]));
 	}
 	
-	if (!(g_nomMenus[eidx].IsRegistered()))
-		g_nomMenus[eidx].Register();
+	if (!(g_menus[eidx].IsRegistered()))
+		g_menus[eidx].Register();
 		
-	g_nomMenus[eidx].Open(0, 0, plr);
+	g_menus[eidx].Open(0, 0, plr);
 }
 
 bool tryNominate(CBasePlayer@ plr, string mapname) {
-	if (g_vote.status != MVOTE_NOT_STARTED) {
+	if (g_rtvVote.status != MVOTE_NOT_STARTED) {
 		return false;
 	}
 
@@ -709,7 +716,6 @@ bool rejectNonAdmin(CBasePlayer@ plr) {
 // return 0 = chat not handled, 1 = handled and show chat, 2 = handled and hide chat
 int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	bool isAdmin = g_PlayerFuncs.AdminLevel(plr) >= ADMIN_YES;
-	int eidx = plr.entindex();
 	
 	if (args.ArgC() >= 1)
 	{
@@ -723,7 +729,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		}
 		else if (args[0] == "unnom" || args[0] == "unom" || args[0] == "denom") {
 			RtvState@ state = g_playerStates[plr.entindex()];
-			if (g_vote.status != MVOTE_NOT_STARTED) {
+			if (g_rtvVote.status != MVOTE_NOT_STARTED) {
 				g_PlayerFuncs.SayText(plr, "[RTV] Too late for that now!\n");
 			}
 			else if (state.nom.Length() > 0) {
@@ -767,7 +773,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 				return 2;
 			}
 			
-			if (g_vote.status != MVOTE_NOT_STARTED) {
+			if (g_rtvVote.status != MVOTE_NOT_STARTED) {
 				g_PlayerFuncs.SayText(plr, "[RTV] A vote is already in progress!\n");
 			} else {
 				startVote("(forced by " + plr.pev.netname + ")");
@@ -833,7 +839,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		}
 	}
 	
-	return 0;
+	return doGameVote(plr, args, inConsole);
 }
 
 HookReturnCode ClientSay( SayParameters@ pParams ) {

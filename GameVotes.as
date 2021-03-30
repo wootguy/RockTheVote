@@ -33,7 +33,7 @@ CBasePlayer@ findPlayer(string uniqueId) {
 }
 
 void optionChosenCallback(MenuOption chosenOption, CBasePlayer@ plr) {
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Voted " + chosenOption.label + "\n\nSay \".vote\" to reopen the menu.\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Voted " + chosenOption.label + "\n\nSay \".vote\" to reopen the menu\n");
 }
 
 void voteKillFinishCallback(MenuOption chosenOption, int resultReason) {
@@ -94,7 +94,7 @@ void voteKillMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTe
 	string option;
 	item.m_pUserData.retrieve(option);
 	
-	tryStartVotekill(plr, option);
+	g_Scheduler.SetTimeout("tryStartVotekill", 0.0f, EHandle(plr), option);
 }
 
 void openGameVoteMenu(CBasePlayer@ plr) {
@@ -169,7 +169,7 @@ bool tryStartGameVote(CBasePlayer@ plr) {
 	
 	// prevent single voter spamming and preventing others from voting
 	if (g_lastVoteStarter == getPlayerUniqueId(plr)) {
-		cooldown *= 2;
+		cooldown = g_EngineFuncs.CVarGetFloat("mp_playervotedelay");
 	}
 	
 	if (g_lastGameVote > 0 and voteDelta < cooldown) {
@@ -180,7 +180,12 @@ bool tryStartGameVote(CBasePlayer@ plr) {
 	return true;
 }
 
-void tryStartVotekill(CBasePlayer@ plr, string uniqueId) {
+void tryStartVotekill(EHandle h_plr, string uniqueId) {
+	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+	if (plr is null) {
+		return;
+	}
+	
 	if (!tryStartGameVote(plr)) {
 		return;
 	}

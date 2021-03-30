@@ -114,7 +114,6 @@ HookReturnCode ClientLeave(CBasePlayer@ plr) {
 class MenuVote {
 	int status = MVOTE_NOT_STARTED;
 	
-	private CTextMenu@ voteMenu;
 	private MenuVoteParams voteParams;
 	private array<int> playerVotes;
 	private array<bool> playerWatching; // players who reopened the menu
@@ -180,15 +179,28 @@ class MenuVote {
 	}
 	
 	void update() {
-		@voteMenu = CTextMenu(@voteMenuCallback);
-		voteMenu.SetTitle("\\y" + voteParams.title);
+		for (int i = 1; i <= g_Engine.maxClients; i++) {
+			CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
+
+			if (plr !is null and plr.IsConnected()) {
+				update(plr);
+			}
+		}
 		
+		blinkTime++;
+	}
+	
+	void update(CBasePlayer@ plr) {
+		int eidx = plr.entindex();
 		int bestVotes = getHighestVotecount();
 		bool anyoneVoted = bestVotes > -1;
-		bool shouldBlinkSelectedOption = status == MVOTE_FINISHED && (blinkTime++ % 2 == 0);
+		bool shouldBlinkSelectedOption = status == MVOTE_FINISHED && (blinkTime % 2 == 0);
 		
 		bool percentBased = voteParams.percentNeeded >= 0;
 		int totalVotes = getTotalVotes();
+	
+		@g_menus[eidx] = CTextMenu(@voteMenuCallback);
+		g_menus[eidx].SetTitle("\\y" + voteParams.title);
 		
 		for (uint i = 0; i < voteParams.options.length(); i++) {
 			int thisOption = i+1;
@@ -203,7 +215,7 @@ class MenuVote {
 				label = (blinkThisOption ? "\\d" : "\\w") + label;
 				
 				if (voteCount > 0) {
-					label += "  \\d(" + percent + "%)\\w";
+					label += "  \\d(" + percent + "%)";
 				}
 			}
 			else if (voteCount > 0 || blinkThisOption) {
@@ -214,27 +226,31 @@ class MenuVote {
 				} else {
 					label = "\\r" + label;
 				}
-				label += "  \\d(" + voteCount + ")\\w";
+				label += "  \\d(" + voteCount + ")";
 			} else {
 				label = (anyoneVoted ? "\\r" : "\\w") + label;
 			}
 			
+			if (playerVotes[eidx] == thisOption) {
+				label += " X";
+			}
+			
+			if (i == voteParams.options.length()-1) {
+				int left = secondsLeft > 0 ? (secondsLeft+1) : 0;
+				string timeleft = "\n\n" + secondsLeft + " seconds left";
+				label += "\\y" + timeleft;
+			}
+			
 			label += "\\y";
 			
-			voteMenu.AddItem(label, any(thisOption));
+			g_menus[eidx].AddItem(label, any(thisOption));
 		}
-
-		voteMenu.Register();
-
-		for (int i = 1; i <= g_Engine.maxClients; i++) {
-			CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
-
-			if (plr !is null and plr.IsConnected()) {
-				int menuTime = status == MVOTE_FINISHED ? 1 : 0;
-				if (isPlayerWatching(plr)) {
-					voteMenu.Open(menuTime, 0, plr);
-				}
-			}
+		
+		g_menus[eidx].Register();
+		
+		int menuTime = status == MVOTE_FINISHED ? 1 : 2;
+		if (isPlayerWatching(plr)) {
+			g_menus[eidx].Open(menuTime, 0, plr);
 		}
 	}
 	
@@ -243,22 +259,22 @@ class MenuVote {
 	}
 	
 	void reopen(CBasePlayer@ plr) {
-		voteMenu.Open(0, 0, plr);
+		g_menus[plr.entindex()].Open(0, 0, plr);
 		playerWatching[plr.entindex()] = true;
 	}
 	
 	void cancel() {
-		@voteMenu = CTextMenu(@voteMenuCallback);
-		voteMenu.SetTitle("\\yVote cancelled...");
-		voteMenu.AddItem(" ", any(""));
-		voteMenu.Register();
+		@g_menus[0] = CTextMenu(@voteMenuCallback);
+		g_menus[0].SetTitle("\\yVote cancelled...");
+		g_menus[0].AddItem(" ", any(""));
+		g_menus[0].Register();
 
 		for (int i = 1; i <= g_Engine.maxClients; i++) {
 			CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
 
 			if (plr !is null) {
 				if (isPlayerWatching(plr)) {
-					voteMenu.Open(2, 0, plr);
+					g_menus[0].Open(2, 0, plr);
 				}
 			}
 		}
@@ -290,8 +306,10 @@ class MenuVote {
 			voteParams.thinkCallback(secondsLeft);
 		}
 		
-		@g_menuTimer = g_Scheduler.SetTimeout("voteThink", 1.0f);
 		secondsLeft--;
+		update();
+		
+		@g_menuTimer = g_Scheduler.SetTimeout("voteThink", 1.0f);
 	}
 	
 	int getOptionVotes(int option) {

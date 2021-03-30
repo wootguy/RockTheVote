@@ -110,7 +110,7 @@ void reset() {
 void loadCrossPluginAfkState() {
 	CBaseEntity@ afkEnt = g_EntityFuncs.FindEntityByTargetname(null, "PlayerStatusPlugin");
 	
-	if (afkEnt !is null) {
+	if (afkEnt is null) {
 		return;
 	}
 	
@@ -276,8 +276,6 @@ void voteThinkCallback(int secondsLeft) {
 	else if (secondsLeft == 3)		{ playSoundGlobal("fvox/three.wav", 0.8f, 85); }
 	else if (secondsLeft == 2)		{ playSoundGlobal("fvox/two.wav", 0.8f, 85); }
 	else if (secondsLeft == 1)		{ playSoundGlobal("fvox/one.wav", 0.8f, 85); }
-
-	g_PlayerFuncs.ClientPrintAll(HUD_PRINTCENTER, string(secondsLeft) + " seconds left to vote");
 }
 
 void voteFinishCallback(MenuOption chosenOption, int resultReason) {

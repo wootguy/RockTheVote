@@ -315,7 +315,7 @@ int tryRtv(CBasePlayer@ plr) {
 	
 	if (g_Engine.time < g_SecondsUntilVote.GetInt()) {
 		int timeLeft = int(Math.Ceil(float(g_SecondsUntilVote.GetInt()) - g_Engine.time));
-		g_PlayerFuncs.SayText(plr, "[RTV] RTV will enable in " + timeLeft + " seconds.  -" + plr.pev.netname);
+		g_PlayerFuncs.SayTextAll(plr, "[RTV] RTV will enable in " + timeLeft + " seconds.  -" + plr.pev.netname);
 		return 2;
 	}
 	

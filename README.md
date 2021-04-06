@@ -5,6 +5,8 @@ A rewrite of the [RockTheVote plugin by MrOats](https://github.com/MrOats/AngelS
 This plugin will randomize the map cycle and prevent maps from being played again until most other maps on the server have been played, or if someone specifically nominates a repeat map.
 There's also a new map list for maps that can only be played once a month or so because they're horrible, overplayed, or just don't fit the normal gameplay of sven.
 
+This plugin also adds text-menu alternatives to the built-in game votes. These are much less annoying as they don't take control of your mouse.
+
 # Chat commands
 
 Everyone can use these commands.
@@ -31,6 +33,7 @@ Note: These commands also work in chat.
 | .set_nextmap [map] | Yes | Set the next map for when the current map ends. This doesn't work for maps in a series (which use trigger_changelevel instead of game_end) |
 | .pastmaplist | No | Show the recently played maps that can't be nominated yet. |
 | .pastmaplistfull | No | Show all maps in `previous_maps.txt`. |
+| .vote | No | Open the vote menu (requires `rtv.gameVotes 1` CVar). |
 
 # CVars
 | CVar | Description |
@@ -39,9 +42,10 @@ Note: These commands also work in chat.
 | iMaxMaps | The max number of maps shown in the vote menu. 9 is the max before options are split into pages. |
 | secondsToVote | How long the vote menu will be shown. |
 | iPercentReq | Percentage of players needed to `rtv` before a vote starts (rounded up to the nearest whole number). |
-| iExcludePrevMaps | Number of maps to remember in the `previous_maps.txt` file. Maps in this list will never be chosen randomly for the next map or in the vote menu. Maps are not written to the previous maps list if the server population is low (less than 4 players), or if a map isn't found in `mapvote.cfg` or `hidden_nom_maps.txt`. <br /><br /> For the least amount of repeat maps, set this to the number of maps in your `mapcycle.txt` file, minus about 50 or so. You'll want there to be maybe 50 potential options for the next map because the server won't update the previous map list when there are less than 4 players. |
+| iExcludePrevMaps | Number of maps to remember in the `previous_maps.txt` file. Maps in this list will never be chosen randomly for the next map or in the vote menu. Maps are not written to the previous maps list if the server population is low (less than 4 players), or if a map isn't found in `mapvote.cfg` or `hidden_nom_maps.txt`. <br /><br /> For the least amount of repeat maps, set this to the number of maps in your `mapcycle.txt` file, minus about 50 or so. You'll want there to be maybe 50 potential options for the next map because the server won't update the previous map list when there are less than 4 players. The map cycle might also be too predictable without enough possibilities. |
 | iExcludePrevMapsNomOnly | Number of maps needed to play before the same map can be nominated again. |
 | iExcludePrevMapsNomOnlyMeme | Number of maps needed to play before a map in `hidden_nom_maps.txt` can be nominated again. |
+| gameVotes | If set to 1, enables the `.vote` command to replace the built-in game votes. Currently only killing and survival mode votes are supported. |
 
 # Installation
 1. Download the script and save it to `scripts/plugins/RockTheVote.as`
@@ -64,8 +68,8 @@ as_command rtv.iExcludePrevMaps 800
 as_command rtv.iExcludePrevMapsNomOnly 20
 as_command rtv.iExcludePrevMapsNomOnlyMeme 400
 ```
-4. Create a file for the normal votable maps, or symlink your `mapvote.cfg` file here: `scripts/plugins/cfg/mapvote.cfg`.  
-Maps listed here can be nominated with the normal cooldown (`iExcludePrevMapsNomOnly`).
+4. Create a file for the normal votable maps, or symlink your `mapvote.cfg` file here: `scripts/plugins/cfg/mapvote.txt`.  
+Maps listed here can be nominated with the normal cooldown (`iExcludePrevMapsNomOnly`). The `addvotemap` text is optional in this list.
 5. Create the hidden map list file: `scripts/plugins/cfg/hidden_nom_maps.txt`  
 Maps listed here have a large nom cooldown (`iExcludePrevMapsNomOnlyMeme`) and never randomly show up in the vote menu or as the next map.
 6. Make sure your `mapcycle.txt` file is up-to-date with what you have installed on the server, and that the number of maps in that file is larger than the `iExcludePrevMaps` CVar.

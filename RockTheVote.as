@@ -25,7 +25,7 @@ CCVar@ g_ExcludePrevMapsNomMeme;	// limit for nomming a hidden/meme map again
 CCVar@ g_EnableGameVotes;			// enable text menu replacements for the default game votes
 
 // maps that can be nominated with a normal cooldown
-const string votelistFile = "scripts/plugins/cfg/mapvote.cfg"; 
+const string votelistFile = "scripts/plugins/cfg/mapvote.txt"; 
 array<string> g_normalMaps;
 
 // maps that have a large nom cooldown and never randomly show up in the vote menu
@@ -168,6 +168,7 @@ void playSoundGlobal(string file, float volume, int pitch) {
 }
 
 void change_map(string mapname) {
+	g_Log.PrintF("[RTV] changing map to " + mapname + "\n");
 	g_EngineFuncs.ServerCommand("changelevel " + mapname + "\n");
 }
 
@@ -178,17 +179,17 @@ void intermission() {
 
 
 
-int getCurrentRtvCount() {
+int getCurrentRtvCount(bool excludeAfks=true) {
 	int count = 0;
 
 	for (uint i = 0; i < g_playerStates.size(); i++) {
-		count += g_playerStates[i].didRtv and g_playerStates[i].afkTime == 0 ? 1 : 0;
+		count += g_playerStates[i].didRtv and (g_playerStates[i].afkTime == 0 || !excludeAfks) ? 1 : 0;
 	}
 	
 	return count;
 }
 
-int getRequiredRtvCount() {
+int getRequiredRtvCount(bool excludeAfks=true) {
 	uint playerCount = 0;
 	
 	for (int i = 1; i <= g_Engine.maxClients; i++) {
@@ -198,7 +199,7 @@ int getRequiredRtvCount() {
 			continue;
 		}
 		
-		if (g_playerStates[i].afkTime > 0) {
+		if (g_playerStates[i].afkTime > 0 && excludeAfks) {
 			continue; // PlayerStatus plugin says this player is afk
 		}
 		
@@ -266,7 +267,7 @@ void startVote(string reason="") {
 	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] Vote started! " + reason + "\n");
 }
 
-void voteThinkCallback(int secondsLeft) {
+void voteThinkCallback(MenuVote::MenuVote@ voteMenu, int secondsLeft) {
 	int voteTime = g_VotingPeriodTime.GetInt();
 	
 	if (secondsLeft == voteTime)	{ playSoundGlobal("gman/gman_choose1.wav", 1.0f, 100); }
@@ -278,7 +279,7 @@ void voteThinkCallback(int secondsLeft) {
 	else if (secondsLeft == 1)		{ playSoundGlobal("fvox/one.wav", 0.8f, 85); }
 }
 
-void voteFinishCallback(MenuOption chosenOption, int resultReason) {
+void voteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, int resultReason) {
 	string nextMap = chosenOption.value;
 	
 	if (resultReason == MVOTE_RESULT_TIED) {
@@ -290,6 +291,8 @@ void voteFinishCallback(MenuOption chosenOption, int resultReason) {
 	}
 	
 	playSoundGlobal("buttons/blip3.wav", 1.0f, 70);
+	
+	g_Log.PrintF("[RTV] chose " + nextMap + "\n");
 	
 	g_Scheduler.SetTimeout("intermission", MenuVote::g_resultTime);
 	@g_timer = g_Scheduler.SetTimeout("change_map", MenuVote::g_resultTime + levelChangeDelay, nextMap);
@@ -312,28 +315,38 @@ int tryRtv(CBasePlayer@ plr) {
 	
 	if (g_Engine.time < g_SecondsUntilVote.GetInt()) {
 		int timeLeft = int(Math.Ceil(float(g_SecondsUntilVote.GetInt()) - g_Engine.time));
-		g_PlayerFuncs.SayTextAll(plr, "[RTV] RTV will enable in " + timeLeft + " seconds.");
-		return 1;
-	}
-	
-	if (g_playerStates[eidx].didRtv) {
-		g_PlayerFuncs.SayText(plr, "[RTV] " + getCurrentRtvCount() + " of " + getRequiredRtvCount() + " players until vote starts. You already rtv'd.\n");
+		g_PlayerFuncs.SayText(plr, "[RTV] RTV will enable in " + timeLeft + " seconds.  -" + plr.pev.netname);
 		return 2;
 	}
 	
-	g_playerStates[eidx].didRtv = true;
-	
-	if (getCurrentRtvCount() >= getRequiredRtvCount()) {
-		startVote();
-	} else {
-		sayRtvCount();
+	if (g_playerStates[eidx].didRtv) {
+		g_PlayerFuncs.SayText(plr, "[RTV] " + getCurrentRtvCount() + " of " + getRequiredRtvCount() + " players until vote starts! You already rtv'd.\n");
+		return 2;
 	}
 	
-	return 1;
+	g_playerStates[eidx].didRtv = true;	
+	
+	if (getCurrentRtvCount() >= getRequiredRtvCount()) {
+		sayRtvCount(plr);
+		startVote();
+	} else {
+		sayRtvCount(plr);
+	}
+	
+	return 2;
 }
 
-void sayRtvCount() {
-	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] " + getCurrentRtvCount() + " of " + getRequiredRtvCount() + " players until vote starts!\n");
+void sayRtvCount(CBasePlayer@ plr=null) {
+	string msg = "[RTV] " + getCurrentRtvCount() + " of " + getRequiredRtvCount() + " players until vote starts!";
+	
+	if (plr !is null) {
+		msg += "  -" + plr.pev.netname;
+		if (g_playerStates[plr.entindex()].afkTime > 0) {
+			msg += " (AFK)";
+		}
+	}
+		
+	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, msg + "\n");
 }
 
 void cancelRtv(CBasePlayer@ plr) {
@@ -634,7 +647,7 @@ void loadAllMapLists() {
 	
 	for (uint i = 0; i < g_normalMaps.size(); i++) {
 		if (g_memeMapsHashed.exists(g_normalMaps[i])) {
-			g_Log.PrintF("[RTV] Map \"" + g_normalMaps[i] + "\" should either be in mapvote.cfg or hidden_maps_list.txt, but not both.\n");
+			g_Log.PrintF("[RTV] Map \"" + g_normalMaps[i] + "\" should either be in mapvote.cfg or hidden_nom_maps.txt, but not both.\n");
 			continue;
 		}
 	
@@ -717,7 +730,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	
 	if (args.ArgC() >= 1)
 	{
-		if (args[0] == "rtv") {
+		if (args[0] == "rtv" and args.ArgC() == 1) {
 			return tryRtv(plr);
 		}
 		else if (args[0] == "nom" || args[0] == "nominate") {
@@ -732,7 +745,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			}
 			else if (state.nom.Length() > 0) {
 				g_nomList.removeAt(g_nomList.find(state.nom));
-				g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + " revoked their \"" + state.nom + "\" nomination.\n");
+				g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + " removed their \"" + state.nom + "\" nomination.\n");
 				state.nom = "";
 			} else {
 				g_PlayerFuncs.SayText(plr, "[RTV] You haven't nominated anything yet!\n");

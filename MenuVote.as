@@ -16,9 +16,9 @@ enum MENU_VOTE_RESULT_REASONS {
 	MVOTE_RESULT_PERCENT_FAIL,	// vote failed because no option had the percentage of votes required
 }
 
-funcdef void MenuVoteFinishCallback(MenuOption chosenOption, int resultReason);
-funcdef void MenuVoteThinkCallback(int secondsLeft);
-funcdef void MenuVoteOptionCallback(MenuOption chosenOption, CBasePlayer@ plr);
+funcdef void MenuVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, int resultReason);
+funcdef void MenuVoteThinkCallback(MenuVote::MenuVote@ voteMenu, int secondsLeft);
+funcdef void MenuVoteOptionCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, CBasePlayer@ plr);
 
 class MenuOption {
 	string label;
@@ -163,12 +163,21 @@ class MenuVote {
 			return;
 		}
 		
-		playerVotes[plr.entindex()] = option;
-		playerWatching[plr.entindex()] = false;
+		if (playerVotes[plr.entindex()] == option) {
+			playerVotes[plr.entindex()] = 0;
+			option = 0;
+		} else {
+			playerVotes[plr.entindex()] = option;
+		}
+		
 		update();
 		
 		if (voteParams.optionCallback !is null) {
-			voteParams.optionCallback(voteParams.options[option-1], plr);
+			if (option > 0) {
+				voteParams.optionCallback(@this, @voteParams.options[option-1], plr);
+			} else {
+				voteParams.optionCallback(@this, null, plr);
+			}
 		}
 	}
 	
@@ -236,9 +245,12 @@ class MenuVote {
 			}
 			
 			if (i == voteParams.options.length()-1) {
-				int left = secondsLeft > 0 ? (secondsLeft+1) : 0;
-				string timeleft = "\n\n" + secondsLeft + " seconds left";
-				label += "\\y" + timeleft;
+				if (status != MVOTE_FINISHED) {
+					string timeleft = "\n\n" + (secondsLeft+1) + " seconds left";
+					label += "\\y" + timeleft;
+				} else {
+					label += "\n\n";
+				}
 			}
 			
 			label += "\\y";
@@ -291,7 +303,7 @@ class MenuVote {
 			update(); // blink the selected option
 			
 			if (voteParams.thinkCallback !is null) {
-				voteParams.thinkCallback(0);
+				voteParams.thinkCallback(@this, 0);
 			}
 			
 			return;
@@ -303,7 +315,7 @@ class MenuVote {
 		}
 		
 		if (voteParams.thinkCallback !is null) {
-			voteParams.thinkCallback(secondsLeft);
+			voteParams.thinkCallback(@this, secondsLeft);
 		}
 		
 		secondsLeft--;
@@ -340,6 +352,16 @@ class MenuVote {
 		}
 		
 		return int((float(votes) / float(totalVotes))*100);
+	}
+	
+	int getOptionVotePercent(string label) {
+		for (uint i = 0; i < voteParams.options.length(); i++) {
+			if (voteParams.options[i].label == label) {
+				return getVotePercent(getOptionVotes(i+1));
+			}
+		}
+		
+		return -1;
 	}
 
 	// return number of votes for the map with the most votes (for highlighting/tie-breaking)
@@ -398,7 +420,7 @@ class MenuVote {
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTCENTER, "");
 		
 		if (voteParams.finishCallback !is null) {
-			voteParams.finishCallback(selectedOption, selectReason);
+			voteParams.finishCallback(@this, selectedOption, selectReason);
 		}
 	}
 }

@@ -32,17 +32,26 @@ CBasePlayer@ findPlayer(string uniqueId) {
 	return target;
 }
 
-void optionChosenCallback(MenuOption chosenOption, CBasePlayer@ plr) {
+void optionChosenCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, CBasePlayer@ plr) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Voted " + chosenOption.label + "\n\nSay \".vote\" to reopen the menu\n");
 }
 
-void voteKillFinishCallback(MenuOption chosenOption, int resultReason) {
+string yesVoteFailStr(int got, int req) {
+	if (got > 0) {
+		return "(" + got + "%% voted yes but " + req + "%% is required)";
+	}
+	
+	return "(nobody voted yes)";
+}
+
+void voteKillFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, int resultReason) {
 	array<string> parts = chosenOption.value.Split("\\");
 	string name = parts[1];
 	
 	if (chosenOption.label == "No") {
 		int required = int(g_EngineFuncs.CVarGetFloat("mp_votekillrequired"));
-		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to kill \"" + name + "\" failed (" + required + "%% required).\n");
+		int got = voteMenu.getOptionVotePercent("Yes");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to kill \"" + name + "\" failed " + yesVoteFailStr(got, required) + ".\n");
 	} else {
 		CBasePlayer@ target = findPlayer(parts[0]);
 		if (target !is null) {
@@ -58,7 +67,7 @@ void voteKillFinishCallback(MenuOption chosenOption, int resultReason) {
 	}
 }
 
-void survivalVoteFinishCallback(MenuOption chosenOption, int resultReason) {	
+void survivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, int resultReason) {	
 	if (chosenOption.value == "enable") {
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to enable survival mode passed.\n");
 		g_SurvivalMode.VoteToggle();
@@ -67,7 +76,8 @@ void survivalVoteFinishCallback(MenuOption chosenOption, int resultReason) {
 		g_SurvivalMode.VoteToggle();
 	} else {
 		int required = int(g_EngineFuncs.CVarGetFloat("mp_votesurvivalmoderequired"));
-		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to toggle survival mode failed (" + required + "%% required).\n");
+		int got = voteMenu.getOptionVotePercent("Yes");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to toggle survival mode failed " + yesVoteFailStr(got, required) + ".\n");
 	}
 }
 

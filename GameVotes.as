@@ -33,7 +33,9 @@ CBasePlayer@ findPlayer(string uniqueId) {
 }
 
 void optionChosenCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, CBasePlayer@ plr) {
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Voted " + chosenOption.label + "\n\nSay \".vote\" to reopen the menu\n");
+	if (chosenOption !is null) {
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Voted " + chosenOption.label + "\n\nSay \".vote\" to reopen the menu\n");
+	}
 }
 
 string yesVoteFailStr(int got, int req) {

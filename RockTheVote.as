@@ -259,7 +259,8 @@ void startVote(string reason="") {
 	voteParams.title = "RTV Vote";
 	voteParams.options = menuOptions;
 	voteParams.voteTime = g_VotingPeriodTime.GetInt();
-	voteParams.forceOpen = true;
+	voteParams.forceOpen = false;
+	@voteParams.optionCallback = @mapChosenCallback;
 	@voteParams.thinkCallback = @voteThinkCallback;
 	@voteParams.finishCallback = @voteFinishCallback;
 	
@@ -298,6 +299,11 @@ void voteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, 
 	@g_timer = g_Scheduler.SetTimeout("change_map", MenuVote::g_resultTime + levelChangeDelay, nextMap);
 }
 
+void mapChosenCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, CBasePlayer@ plr) {
+	if (chosenOption !is null) {
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Voted " + chosenOption.label + "\n\nSay \"rtv\" to reopen the menu\n");
+	}
+}
 
 
 // return 1 = show chat, 2 = hide chat

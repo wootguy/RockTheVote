@@ -1,6 +1,10 @@
 #include "MenuVote"
 #include "GameVotes"
 
+// TODO:
+// - dont show log message for <4 plaers on classic restart
+// - reopen menu should close again or not show messsage
+
 class RtvState {
 	bool didRtv = false;	// player wants to rock the vote?
 	string nom; 			// what map this player nominated
@@ -264,7 +268,7 @@ void startVote(string reason="") {
 	@voteParams.thinkCallback = @voteThinkCallback;
 	@voteParams.finishCallback = @voteFinishCallback;
 	
-	g_rtvVote.start(voteParams);
+	g_rtvVote.start(voteParams, null);
 	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] Vote started! " + reason + "\n");
 }
 
@@ -321,7 +325,7 @@ int tryRtv(CBasePlayer@ plr) {
 	
 	if (g_Engine.time < g_SecondsUntilVote.GetInt()) {
 		int timeLeft = int(Math.Ceil(float(g_SecondsUntilVote.GetInt()) - g_Engine.time));
-		g_PlayerFuncs.SayTextAll(plr, "[RTV] RTV will enable in " + timeLeft + " seconds.  -" + plr.pev.netname);
+		g_PlayerFuncs.SayTextAll(plr, "[RTV] RTV will enable in " + timeLeft + " seconds.  -" + plr.pev.netname + "\n");
 		return 2;
 	}
 	
@@ -865,11 +869,8 @@ HookReturnCode ClientSay( SayParameters@ pParams ) {
 	
 	int chatHandled = doCommand(plr, args, false);
 	
-	if (chatHandled > 0)
-	{
-		if (chatHandled == 2)
-			pParams.ShouldHide = true;
-		return HOOK_HANDLED;
+	if (chatHandled == 2) {
+		pParams.ShouldHide = true;
 	}
 	return HOOK_CONTINUE;
 }

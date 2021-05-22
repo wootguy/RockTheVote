@@ -122,6 +122,8 @@ class MenuVote {
 	private MenuOption selectedOption;
 	private int blinkTime = 0;
 	
+	string voteStarterId; // steam id of the player who started the vote
+	
 	MenuVote() {}
 	
 	void reset() {
@@ -135,7 +137,7 @@ class MenuVote {
 		g_Scheduler.RemoveTimer(g_menuTimer);
 	}
 	
-	void start(MenuVoteParams voteParams) {
+	void start(MenuVoteParams voteParams, CBasePlayer@ voteStarter) {
 		this.voteParams = voteParams;
 
 		if (!g_hooks_registered) {
@@ -156,6 +158,11 @@ class MenuVote {
 		update();
 		secondsLeft = voteParams.voteTime;
 		@g_menuTimer = g_Scheduler.SetTimeout("voteThink", 0.0f);
+		
+		voteStarterId = "";
+		if (voteStarter !is null) {
+			voteStarterId = getPlayerUniqueId(voteStarter);
+		}
 	}
 	
 	void handleVote(CBasePlayer@ plr, int option) {

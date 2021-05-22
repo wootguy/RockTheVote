@@ -303,6 +303,9 @@ void voteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, 
 	
 	g_Log.PrintF("[RTV] chose " + nextMap + "\n");
 	
+	// rarely the next cycle map is changed to instead of the rtv map. No idea why.
+	g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + nextMap + "\n");
+	
 	g_Scheduler.SetTimeout("intermission", MenuVote::g_resultTime);
 	@g_timer = g_Scheduler.SetTimeout("change_map", MenuVote::g_resultTime + levelChangeDelay, nextMap);
 }

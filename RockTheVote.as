@@ -255,6 +255,10 @@ void startVote(string reason="") {
 	array<string> rtvList = generateRtvList();
 
 	array<MenuOption> menuOptions;
+	
+	menuOptions.insertLast(MenuOption("\\d(exit)"));
+	menuOptions[0].isVotable = false;
+	
 	for (uint i = 0; i < rtvList.size(); i++) {
 		menuOptions.insertLast(MenuOption(rtvList[i]));
 	}
@@ -305,7 +309,10 @@ void voteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, 
 
 void mapChosenCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, CBasePlayer@ plr) {
 	if (chosenOption !is null) {
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Voted " + chosenOption.label + "\n\nSay \"rtv\" to reopen the menu\n");
+		if (chosenOption.label == "\\d(exit)") {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Say \"rtv\" to reopen the menu\n");
+			voteMenu.closeMenu(plr);
+		}
 	}
 }
 

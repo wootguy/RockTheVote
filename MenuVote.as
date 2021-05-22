@@ -23,6 +23,7 @@ funcdef void MenuVoteOptionCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ ch
 class MenuOption {
 	string label;
 	string value;
+	bool isVotable = true;
 	
 	MenuOption() {}
 	
@@ -163,6 +164,10 @@ class MenuVote {
 		if (voteStarter !is null) {
 			voteStarterId = getPlayerUniqueId(voteStarter);
 		}
+		
+		for (uint i = 0; i < 33; i++) {
+			playerWatching[i] = true;
+		}
 	}
 	
 	void handleVote(CBasePlayer@ plr, int option) {
@@ -170,14 +175,14 @@ class MenuVote {
 			return;
 		}
 		
-		if (playerVotes[plr.entindex()] == option) {
-			playerVotes[plr.entindex()] = 0;
-			option = 0;
-		} else {
-			playerVotes[plr.entindex()] = option;
+		if (voteParams.options[option-1].isVotable) {
+			if (playerVotes[plr.entindex()] == option) {
+				playerVotes[plr.entindex()] = 0;
+				option = 0;
+			} else {
+				playerVotes[plr.entindex()] = option;
+			}
 		}
-		
-		update();
 		
 		if (voteParams.optionCallback !is null) {
 			if (option > 0) {
@@ -186,6 +191,8 @@ class MenuVote {
 				voteParams.optionCallback(@this, null, plr);
 			}
 		}
+		
+		update();
 	}
 	
 	void handlePlayerLeave(CBasePlayer@ plr) {
@@ -280,6 +287,13 @@ class MenuVote {
 	void reopen(CBasePlayer@ plr) {
 		g_menus[plr.entindex()].Open(0, 0, plr);
 		playerWatching[plr.entindex()] = true;
+	}
+	
+	void closeMenu(CBasePlayer@ plr) {
+		playerWatching[plr.entindex()] = false;
+		if (playerVotes[plr.entindex()] == 0) {
+			playerVotes[plr.entindex()] = -1;
+		}
 	}
 	
 	void cancel() {

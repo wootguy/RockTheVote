@@ -83,7 +83,13 @@ CBasePlayer@ findPlayer(string uniqueId) {
 
 void optionChosenCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, CBasePlayer@ plr) {
 	if (chosenOption !is null) {
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Voted " + chosenOption.label + "\n\nSay \".vote\" to reopen the menu\n");
+		if (chosenOption.label == "\\d(exit)") {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Say \".vote\" to reopen the menu\n");
+			voteMenu.closeMenu(plr);
+		}
+		else {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Voted " + chosenOption.label + "\n\nSay \".vote\" to reopen the menu\n");
+		}
 	}
 }
 
@@ -316,12 +322,14 @@ void tryStartVotekill(EHandle h_plr, string uniqueId) {
 	if (target is null) {
 		g_PlayerFuncs.SayTextAll(plr, "[Vote] Player not found.\n");
 		return;
-	}
+	}	
 	
 	array<MenuOption> options = {
 		MenuOption("Yes", uniqueId + "\\" + target.pev.netname),
-		MenuOption("No", uniqueId + "\\" + target.pev.netname)
+		MenuOption("No", uniqueId + "\\" + target.pev.netname),
+		MenuOption("\\d(exit)")
 	};
+	options[2].isVotable = false;
 	
 	MenuVoteParams voteParams;
 	voteParams.title = "Kill \"" + target.pev.netname + "\"?";
@@ -366,8 +374,10 @@ void tryStartSurvivalVote(EHandle h_plr) {
 	
 	array<MenuOption> options = {
 		MenuOption("Yes", survivalEnabled ? "disable" : "enable"),
-		MenuOption("No", "no")
+		MenuOption("No", "no"),
+		MenuOption("\\d(exit)")
 	};
+	options[2].isVotable = false;
 	
 	MenuVoteParams voteParams;
 	voteParams.title = title;

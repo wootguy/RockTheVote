@@ -39,9 +39,9 @@ class MenuOption {
 }
 
 class MenuVoteParams {
-	string title = "Vote";					// Menu title
+	string title = "Votaciones";					// Menu title
 	array<MenuOption> options = {			// Custom options
-		MenuOption("Yes"),
+		MenuOption("Si"),
 		MenuOption("No")
 	};
 	int voteTime = 10;						// Time in seconds to display the vote

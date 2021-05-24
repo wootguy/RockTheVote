@@ -255,12 +255,12 @@ class MenuVote {
 			}
 			
 			if (playerVotes[eidx] == thisOption) {
-				label += " X";
+				label += " \\y<--\\w";
 			}
 			
 			if (i == voteParams.options.length()-1) {
 				if (status != MVOTE_FINISHED) {
-					string timeleft = "\n\n" + (secondsLeft+1) + " seconds left";
+					string timeleft = "\n\n" + (secondsLeft+1) + " Segundos restantes";
 					label += "\\y" + timeleft;
 				} else {
 					label += "\n\n";
@@ -298,7 +298,7 @@ class MenuVote {
 	
 	void cancel() {
 		@g_menus[0] = CTextMenu(@voteMenuCallback);
-		g_menus[0].SetTitle("\\yVote cancelled...");
+		g_menus[0].SetTitle("\\rVotacion cancelada..\\w");
 		g_menus[0].AddItem(" ", any(""));
 		g_menus[0].Register();
 

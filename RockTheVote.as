@@ -17,7 +17,7 @@ CClientCommand pastmaplist("pastmaplist", "Show recently played maps (up to g_Ex
 CClientCommand pastmaplistfull("pastmaplistfull", "Show recently played maps (up to g_ExcludePrevMapsNomMeme)", @consoleCmd);
 CClientCommand set_nextmap("set_nextmap", "Set the next map cycle", @consoleCmd);
 CClientCommand map("map", "Force a map change", @consoleCmd);
-CClientCommand vote("***vote", "Start a vote or reopen the vote menu", @consoleCmd);
+CClientCommand vote("vote", "Start a vote or reopen the vote menu", @consoleCmd);
 
 CCVar@ g_SecondsUntilVote;
 CCVar@ g_MaxMapsToVote;

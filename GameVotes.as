@@ -406,6 +406,7 @@ int doGameVote(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		if (args[0] == ".vote") {
 			if (g_EnableGameVotes.GetInt() == 0) {
 				g_PlayerFuncs.SayText(plr, "[Vote] Command disabled.\n");
+				return 2;
 			}
 			
 			if (g_gameVote.status == MVOTE_IN_PROGRESS) {

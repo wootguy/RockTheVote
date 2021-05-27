@@ -237,7 +237,7 @@ array<string> generateRtvList() {
 	}
 	
 	for (int failsafe = 0; failsafe < 1000; failsafe++) {	
-		if (int(rtvList.size()) >= g_MaxMapsToVote.GetInt()) {
+		if (int(rtvList.size()) >= g_MaxMapsToVote.GetInt() or int(rtvList.size()) >= 8) {
 			break;
 		}
 		

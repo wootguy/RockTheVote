@@ -359,7 +359,7 @@ class MenuVote {
 		int voteCount = 0;
 		
 		for (uint k = 0; k < playerVotes.size(); k++) {
-			voteCount += (playerVotes[k] != 0) ? 1 : 0;
+			voteCount += (playerVotes[k] > 0) ? 1 : 0;
 		}
 		
 		return voteCount;

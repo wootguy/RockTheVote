@@ -4,17 +4,20 @@ string g_lastVoteStarter; // used to prevent a single player from spamming votes
 
 const int VOTE_FAILS_UNTIL_BAN = 2; // if a player keeps starting votes that fail, they're banned from starting more votes
 const int VOTE_FAIL_IGNORE_TIME = 60; // number of minutes to remember failed votes
-const int VOTING_BAN_DURATION = 24*60; // number of minutes a ban lasts (banned from starting voties, not from the server)
+const int VOTING_BAN_DURATION = 24*60; // number of minutes a ban lasts (banned from starting votes, not from the server)
+const int GLOBAL_VOTE_COOLDOWN = 5; // just enough time to read results of the previous vote.
+const int RESTART_MAP_PERCENT_REQ = 75;
 
 class PlayerVoteState
 {
 	array<DateTime> failedVoteTimes; // times that this player started a vote which failed
 	DateTime voteBanExpireTime;
 	bool isBanned = false;
+	DateTime nextVoteAllow = DateTime(); // next time this player can start a vote
 	
 	PlayerVoteState() {}
 	
-	void handleVoteFail() {	
+	void handleVoteFail() {		
 		// clear failed votes from long ago
 		for (int i = int(failedVoteTimes.size())-1; i >= 0; i--) {
 			int diff = int(TimeDifference(DateTime(), failedVoteTimes[i]).GetTimeDifference());
@@ -26,8 +29,11 @@ class PlayerVoteState
 		
 		failedVoteTimes.insertLast(DateTime());
 		
+		// this player wasted other's time. Punish.
+		nextVoteAllow = DateTime() + TimeDifference(g_EngineFuncs.CVarGetFloat("mp_playervotedelay"));
+		
 		if (failedVoteTimes.size() >= VOTE_FAILS_UNTIL_BAN) {
-			// player keeps starting votes that not enough people agree with. Stop it.
+			// player continues to start votes that fail. REALLY PUNISH.
 			isBanned = true;
 			failedVoteTimes.resize(0);
 			voteBanExpireTime = DateTime() + TimeDifference(VOTING_BAN_DURATION*60);
@@ -35,7 +41,9 @@ class PlayerVoteState
 	}
 	
 	void handleVoteSuccess() {
-		failedVoteTimes.resize(0); // player must not be spamming, if others want the same thing they do
+		// player knows what the people want. Keep it up! But give someone else a chance to start a vote
+		nextVoteAllow = DateTime() + TimeDifference(GLOBAL_VOTE_COOLDOWN*2);
+		failedVoteTimes.resize(0);
 	}
 }
 
@@ -123,7 +131,7 @@ void voteKillFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOpti
 			}
 			target.m_flRespawnDelayTime = g_EngineFuncs.CVarGetFloat("mp_votekill_respawndelay");
 			
-			keep_votekilled_player_dead(steamId, DateTime());
+			keep_votekilled_player_dead(steamId, target.pev.netname, DateTime());
 			voterState.handleVoteSuccess();
 		} else {
 			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to kill \"" + name + "\" failed (player not found).\n");
@@ -131,10 +139,11 @@ void voteKillFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOpti
 	}
 }
 
-void keep_votekilled_player_dead(string targetId, DateTime killTime) {
+void keep_votekilled_player_dead(string targetId, string targetName, DateTime killTime) {
 	int diff = int(TimeDifference(DateTime(), killTime).GetTimeDifference());
 	
 	if (diff > g_EngineFuncs.CVarGetFloat("mp_votekill_respawndelay")) {
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Votekill expired for \"" + targetName + "\".\n");
 		return;
 	}
 	
@@ -148,16 +157,17 @@ void keep_votekilled_player_dead(string targetId, DateTime killTime) {
 
 		string steamId = getPlayerUniqueId( plr );
 		
-		if (steamId == targetId) {			
+		if (steamId == targetId) {
 			if (plr.IsAlive()) {
 				g_EntityFuncs.Remove(plr);
 				plr.m_flRespawnDelayTime = g_EngineFuncs.CVarGetFloat("mp_votekill_respawndelay") - diff;
 				g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Killing \"" + plr.pev.netname + "\" again. Votekill respawn delay not finished.\n");
 			}
+			
 		}
 	}
 	
-	g_Scheduler.SetTimeout("keep_votekilled_player_dead", 1, targetId, killTime);
+	g_Scheduler.SetTimeout("keep_votekilled_player_dead", 1, targetId, targetName, killTime);
 }
 
 void survivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, int resultReason) {	
@@ -182,6 +192,22 @@ void survivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosen
 	}
 }
 
+void restartVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, int resultReason) {	
+	PlayerVoteState@ voterState = getPlayerVoteState(voteMenu.voteStarterId);
+
+	if (chosenOption.label == "Yes") {
+		voterState.handleVoteSuccess();
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to restart map passed. Restarting in 5 seconds.\n");
+		@g_timer = g_Scheduler.SetTimeout("change_map", MenuVote::g_resultTime + (5-MenuVote::g_resultTime), "" + g_Engine.mapname);
+	}
+	else {
+		int required = RESTART_MAP_PERCENT_REQ;
+		int got = voteMenu.getOptionVotePercent("Yes");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to restart map failed " + yesVoteFailStr(got, required) + ".\n");
+		voterState.handleVoteFail();
+	}
+}
+
 void gameVoteMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTextMenuItem@ item) {
 	if (item is null or plr is null or !plr.IsConnected()) {
 		return;
@@ -194,6 +220,8 @@ void gameVoteMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTe
 		g_Scheduler.SetTimeout("openVoteKillMenu", 0.0f, EHandle(plr));
 	} else if (option == "survival") {
 		g_Scheduler.SetTimeout("tryStartSurvivalVote", 0.0f, EHandle(plr));
+	} else if (option == "restartmap") {
+		g_Scheduler.SetTimeout("tryStartRestartVote", 0.0f, EHandle(plr));
 	}
 }
 
@@ -214,11 +242,16 @@ void openGameVoteMenu(CBasePlayer@ plr) {
 	@g_menus[eidx] = CTextMenu(@gameVoteMenuCallback);
 	g_menus[eidx].SetTitle("\\yVote Menu");
 	
-	g_menus[eidx].AddItem("\\wKill Player\\y", any("kill"));
+	string killReq = "\\d(" + int(g_EngineFuncs.CVarGetFloat("mp_votekillrequired")) + "% needed)";
+	string survReq = "\\d(" + int(g_EngineFuncs.CVarGetFloat("mp_votesurvivalmoderequired")) + "% needed)";
+	string restartReq = "\\d(" + RESTART_MAP_PERCENT_REQ + "% needed)";
+	
+	g_menus[eidx].AddItem("\\wKill Player " + killReq + "\\y", any("kill"));
 	
 	bool canVoteSurvival = g_EngineFuncs.CVarGetFloat("mp_survival_voteallow") != 0 &&
 						   g_EngineFuncs.CVarGetFloat("mp_survival_supported") != 0;
-	g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Toggle Survival\\y", any("survival"));
+	g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Toggle Survival " + survReq + "\\y", any("survival"));
+	g_menus[eidx].AddItem((g_SurvivalMode.IsActive() ? "\\w" : "\\r") + "Restart Map " + restartReq + "\\y", any("restartmap"));
 	
 	if (!(g_menus[eidx].IsRegistered()))
 		g_menus[eidx].Register();
@@ -275,20 +308,22 @@ bool tryStartGameVote(CBasePlayer@ plr) {
 		return false;
 	}
 	
+	// global cooldown
 	float voteDelta = g_Engine.time - g_lastGameVote;
-	float cooldown = g_EngineFuncs.CVarGetFloat("mp_votetimebetween");
-	
-	// prevent single voter spamming and preventing others from voting
-	if (g_lastVoteStarter == getPlayerUniqueId(plr)) {
-		cooldown = g_EngineFuncs.CVarGetFloat("mp_playervotedelay");
-	}
-	
+	float cooldown = GLOBAL_VOTE_COOLDOWN;
 	if (g_lastGameVote > 0 and voteDelta < cooldown) {
 		g_PlayerFuncs.SayText(plr, "[Vote] Wait " + int((cooldown - voteDelta) + 0.99f) + " seconds before starting another vote.\n");
 		return false;
 	}
 	
+	// player-specific cooldown
 	PlayerVoteState@ voterState = getPlayerVoteState(getPlayerUniqueId(plr));
+	int nextVoteDelta = int(TimeDifference(voterState.nextVoteAllow, DateTime()).GetTimeDifference());
+	if (nextVoteDelta > 0) {
+		g_PlayerFuncs.SayText(plr, "[Vote] Wait " + int(nextVoteDelta + 0.99f) + " seconds before starting another vote.\n");
+		return false;
+	}
+	
 	if (voterState.isBanned) {
 		int diff = int(TimeDifference(voterState.voteBanExpireTime, DateTime()).GetTimeDifference());
 		if (diff > 0) {
@@ -351,11 +386,7 @@ void tryStartVotekill(EHandle h_plr, string uniqueId) {
 
 void tryStartSurvivalVote(EHandle h_plr) {
 	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
-	if (plr is null) {
-		return;
-	}
-	
-	if (!tryStartGameVote(plr)) {
+	if (plr is null or !tryStartGameVote(plr)) {
 		return;
 	}
 	
@@ -394,6 +425,42 @@ void tryStartSurvivalVote(EHandle h_plr) {
 	
 	string enableDisable = survivalEnabled ? "disable" : "enable";
 	g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to " + enableDisable + " survival mode started by \"" + plr.pev.netname + "\".\n");
+	
+	return;
+}
+
+void tryStartRestartVote(EHandle h_plr) {
+	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+	if (plr is null or !tryStartGameVote(plr)) {
+		return;
+	}
+	
+	if (!g_SurvivalMode.IsActive()) {
+		g_PlayerFuncs.SayText(plr, "[Vote] Restarts are only allowed during survival.\n");
+		return;
+	}
+	
+	array<MenuOption> options = {
+		MenuOption("Yes", "yes"),
+		MenuOption("No", "no"),
+		MenuOption("\\d(exit)")
+	};
+	options[2].isVotable = false;
+	
+	MenuVoteParams voteParams;
+	voteParams.title = "Restart map?";
+	voteParams.options = options;
+	voteParams.percentFailOption = options[1];
+	voteParams.voteTime = int(g_EngineFuncs.CVarGetFloat("mp_votetimecheck"));
+	voteParams.percentNeeded = RESTART_MAP_PERCENT_REQ;
+	@voteParams.finishCallback = @restartVoteFinishCallback;
+	@voteParams.optionCallback = @optionChosenCallback;
+	g_gameVote.start(voteParams, plr);
+	
+	g_lastGameVote = g_Engine.time;
+	g_lastVoteStarter = getPlayerUniqueId(plr);
+	
+	g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to restart map started by \"" + plr.pev.netname + "\".\n");
 	
 	return;
 }

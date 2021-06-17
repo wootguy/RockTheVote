@@ -13,6 +13,7 @@ class PlayerVoteState
 	array<DateTime> failedVoteTimes; // times that this player started a vote which failed
 	DateTime voteBanExpireTime;
 	bool isBanned = false;
+	int killedCount = 0; // kill for longer duration if keep getting votekilled
 	DateTime nextVoteAllow = DateTime(); // next time this player can start a vote
 	
 	PlayerVoteState() {}
@@ -44,6 +45,18 @@ class PlayerVoteState
 		// player knows what the people want. Keep it up! But give someone else a chance to start a vote
 		nextVoteAllow = DateTime() + TimeDifference(GLOBAL_VOTE_COOLDOWN*2);
 		failedVoteTimes.resize(0);
+	}
+}
+
+void reduceKillPenalties() {
+	array<string>@ state_keys = g_voting_ban_states.getKeys();
+	
+	for (uint i = 0; i < state_keys.length(); i++)
+	{
+		PlayerVoteState@ state = cast<PlayerVoteState@>(g_voting_ban_states[state_keys[i]]);
+		if (state.killedCount > 0) {
+			state.killedCount -= 1;
+		}
 	}
 }
 
@@ -121,28 +134,45 @@ void voteKillFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOpti
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to kill \"" + name + "\" failed " + yesVoteFailStr(got, required) + ".\n");
 		voterState.handleVoteFail();
 	} else {
-		CBasePlayer@ target = findPlayer(parts[0]);
+		string steamId = parts[0];
+		CBasePlayer@ target = findPlayer(steamId);
+		PlayerVoteState@ victimState = getPlayerVoteState(getPlayerUniqueId(target));
+		string victimName = steamId;
+		
+		int killTime = 30;
+		string timeStr = "30 seconds";
+		
+		if (victimState.killedCount >= 3) {
+			killTime = 60*5;
+			timeStr = "5 minutes";
+		}
+		else if (victimState.killedCount >= 2) {
+			killTime = 60*2;
+			timeStr = "2 minutes";
+		} else if (victimState.killedCount >= 1) {
+			killTime = 60;
+			timeStr = "1 minute";
+		}
+		
 		if (target !is null) {
-			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote killing \"" + name + "\".\n");			
-			string steamId = getPlayerUniqueId( target );
-			
 			if (target.IsAlive()) {
 				g_EntityFuncs.Remove(target);
 			}
-			target.m_flRespawnDelayTime = g_EngineFuncs.CVarGetFloat("mp_votekill_respawndelay");
-			
-			keep_votekilled_player_dead(steamId, target.pev.netname, DateTime());
-			voterState.handleVoteSuccess();
-		} else {
-			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to kill \"" + name + "\" failed (player not found).\n");
+			target.m_flRespawnDelayTime = killTime;
+			victimName = target.pev.netname;
 		}
+		
+		voterState.handleVoteSuccess();
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote killing \"" + victimName + "\" for " + timeStr + ".\n");
+		keep_votekilled_player_dead(steamId, victimName, DateTime(), killTime);
+		victimState.killedCount += 1;
 	}
 }
 
-void keep_votekilled_player_dead(string targetId, string targetName, DateTime killTime) {
+void keep_votekilled_player_dead(string targetId, string targetName, DateTime killTime, int killDuration) {
 	int diff = int(TimeDifference(DateTime(), killTime).GetTimeDifference());
 	
-	if (diff > g_EngineFuncs.CVarGetFloat("mp_votekill_respawndelay")) {
+	if (diff > killDuration) {
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Votekill expired for \"" + targetName + "\".\n");
 		return;
 	}
@@ -160,14 +190,14 @@ void keep_votekilled_player_dead(string targetId, string targetName, DateTime ki
 		if (steamId == targetId) {
 			if (plr.IsAlive()) {
 				g_EntityFuncs.Remove(plr);
-				plr.m_flRespawnDelayTime = g_EngineFuncs.CVarGetFloat("mp_votekill_respawndelay") - diff;
-				g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Killing \"" + plr.pev.netname + "\" again. Votekill respawn delay not finished.\n");
+				plr.m_flRespawnDelayTime = killDuration - diff;
+				g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Killing \"" + plr.pev.netname + "\" again. " + int(plr.m_flRespawnDelayTime) + " seconds left in votekill penalty.\n");
 			}
 			
 		}
 	}
 	
-	g_Scheduler.SetTimeout("keep_votekilled_player_dead", 1, targetId, targetName, killTime);
+	g_Scheduler.SetTimeout("keep_votekilled_player_dead", 1, targetId, targetName, killTime, killDuration);
 }
 
 void survivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, int resultReason) {	
@@ -277,7 +307,7 @@ void openVoteKillMenu(EHandle h_plr) {
 			continue;
 		}
 		
-		if (g_SurvivalMode.IsEnabled() && !plr.IsAlive()) {
+		if (!plr.IsAlive()) {
 			continue;
 		}
 		
@@ -285,6 +315,10 @@ void openVoteKillMenu(EHandle h_plr) {
 		option.label = "\\w" + plr.pev.netname;
 		option.value = getPlayerUniqueId(plr);
 		targets.insertLast(option);
+	}
+	
+	if (targets.size() == 0) {
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[Vote] Can't vote kill. No one is alive.\n");
 	}
 	
 	targets.sort(function(a,b) { return a.label > b.label; });

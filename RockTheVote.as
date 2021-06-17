@@ -75,6 +75,7 @@ void PluginInit() {
 	reset();
 	
 	g_Scheduler.SetInterval("autoStartRtvCheck", 1.0f, -1);
+	g_Scheduler.SetInterval("reduceKillPenalties", 60*60, -1);
 }
 
 void MapInit() {

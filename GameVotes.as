@@ -164,6 +164,7 @@ void voteKillFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOpti
 		
 		voterState.handleVoteSuccess();
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote killing \"" + victimName + "\" for " + timeStr + ".\n");
+		RelaySay("" + victimName + " killed by vote.");
 		keep_votekilled_player_dead(steamId, victimName, DateTime(), killTime);
 		victimState.killedCount += 1;
 	}
@@ -209,15 +210,39 @@ void survivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosen
 		if (chosenOption.value == "enable") {
 			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to enable survival mode passed.\n");
 			g_SurvivalMode.VoteToggle();
+			RelaySay("Survival mode enabled by vote.");
 		} else if (chosenOption.value == "disable") {
 			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to disable survival mode passed.\n");
 			g_SurvivalMode.VoteToggle();
+			RelaySay("Survival mode disabled by vote.");
 		}
 	}
 	else {
 		int required = int(g_EngineFuncs.CVarGetFloat("mp_votesurvivalmoderequired"));
 		int got = voteMenu.getOptionVotePercent("Yes");
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to toggle survival mode failed " + yesVoteFailStr(got, required) + ".\n");
+		voterState.handleVoteFail();
+	}
+}
+
+void semiSurvivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, int resultReason) {	
+	PlayerVoteState@ voterState = getPlayerVoteState(voteMenu.voteStarterId);
+
+	if (chosenOption.value == "enable" || chosenOption.value == "disable") {
+		voterState.handleVoteSuccess();
+		
+		if (chosenOption.value == "enable") {
+			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to enable semi-survival mode passed.\n");
+			g_EngineFuncs.ServerCommand("as_command fsurvival.mode 2\n");
+		} else if (chosenOption.value == "disable") {
+			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to disable semi-survival mode passed.\n");
+			g_EngineFuncs.ServerCommand("as_command fsurvival.mode 0\n");
+		}
+	}
+	else {
+		int required = int(g_EngineFuncs.CVarGetFloat("mp_votesurvivalmoderequired"));
+		int got = voteMenu.getOptionVotePercent("Yes");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to toggle semi-survival mode failed " + yesVoteFailStr(got, required) + ".\n");
 		voterState.handleVoteFail();
 	}
 }
@@ -250,6 +275,8 @@ void gameVoteMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTe
 		g_Scheduler.SetTimeout("openVoteKillMenu", 0.0f, EHandle(plr));
 	} else if (option == "survival") {
 		g_Scheduler.SetTimeout("tryStartSurvivalVote", 0.0f, EHandle(plr));
+	} else if (option == "semi-survival") {
+		g_Scheduler.SetTimeout("tryStartSemiSurvivalVote", 0.0f, EHandle(plr));
 	} else if (option == "restartmap") {
 		g_Scheduler.SetTimeout("tryStartRestartVote", 0.0f, EHandle(plr));
 	}
@@ -278,9 +305,17 @@ void openGameVoteMenu(CBasePlayer@ plr) {
 	
 	g_menus[eidx].AddItem("\\wKill Player " + killReq + "\\y", any("kill"));
 	
-	bool canVoteSurvival = g_EngineFuncs.CVarGetFloat("mp_survival_voteallow") != 0 &&
+	bool canVoteSurvival = g_EngineFuncs.CVarGetFloat("mp_survival_voteallow") != 0	&&
 						   g_EngineFuncs.CVarGetFloat("mp_survival_supported") != 0;
-	g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Toggle Survival " + survReq + "\\y", any("survival"));
+	bool canVoteSemiSurvival = g_EngineFuncs.CVarGetFloat("mp_survival_voteallow") != 0;
+	
+	if (!g_SurvivalMode.IsEnabled()) {
+		g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Enable Survival " + survReq + "\\y", any("survival"));
+		g_menus[eidx].AddItem((canVoteSemiSurvival ? "\\w" : "\\r") + "Enable Semi-Survival " + survReq + "\\y", any("semi-survival"));
+	} else {
+		g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Disable Survival " + survReq + "\\y", any("survival"));
+	}
+	
 	g_menus[eidx].AddItem((g_SurvivalMode.IsActive() ? "\\w" : "\\r") + "Restart Map " + restartReq + "\\y", any("restartmap"));
 	
 	if (!(g_menus[eidx].IsRegistered()))
@@ -459,6 +494,49 @@ void tryStartSurvivalVote(EHandle h_plr) {
 	
 	string enableDisable = survivalEnabled ? "disable" : "enable";
 	g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to " + enableDisable + " survival mode started by \"" + plr.pev.netname + "\".\n");
+	
+	return;
+}
+
+void tryStartSemiSurvivalVote(EHandle h_plr) {
+	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+	if (plr is null or !tryStartGameVote(plr)) {
+		return;
+	}
+	
+	if (g_EngineFuncs.CVarGetFloat("mp_survival_voteallow") == 0) {
+		g_PlayerFuncs.SayText(plr, "[Vote] Survival votes are disabled");
+		return;
+	}
+	
+	bool survivalEnabled = g_SurvivalMode.IsEnabled();
+	string title = (survivalEnabled ? "Disable" : "Enable") + " semi-survival mode?";
+	if (!survivalEnabled) {
+		title += "\n(respawn when everyone dies)";
+	}
+	
+	array<MenuOption> options = {
+		MenuOption("Yes", survivalEnabled ? "disable" : "enable"),
+		MenuOption("No", "no"),
+		MenuOption("\\d(exit)")
+	};
+	options[2].isVotable = false;
+	
+	MenuVoteParams voteParams;
+	voteParams.title = title;
+	voteParams.options = options;
+	voteParams.percentFailOption = options[1];
+	voteParams.voteTime = int(g_EngineFuncs.CVarGetFloat("mp_votetimecheck"));
+	voteParams.percentNeeded = int(g_EngineFuncs.CVarGetFloat("mp_votesurvivalmoderequired"));
+	@voteParams.finishCallback = @semiSurvivalVoteFinishCallback;
+	@voteParams.optionCallback = @optionChosenCallback;
+	g_gameVote.start(voteParams, plr);
+	
+	g_lastGameVote = g_Engine.time;
+	g_lastVoteStarter = getPlayerUniqueId(plr);
+	
+	string enableDisable = survivalEnabled ? "disable" : "enable";
+	g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to " + enableDisable + " semi-survival mode started by \"" + plr.pev.netname + "\".\n");
 	
 	return;
 }

@@ -108,9 +108,6 @@ void optionChosenCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Say \".vote\" to reopen the menu\n");
 			voteMenu.closeMenu(plr);
 		}
-		else {
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Voted " + chosenOption.label + "\n\nSay \".vote\" to reopen the menu\n");
-		}
 	}
 }
 
@@ -125,6 +122,8 @@ string yesVoteFailStr(int got, int req) {
 void voteKillFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, int resultReason) {
 	array<string> parts = chosenOption.value.Split("\\");
 	string name = parts[1];
+	
+	g_lastGameVote = g_Engine.time;
 	
 	PlayerVoteState@ voterState = getPlayerVoteState(voteMenu.voteStarterId);
 	
@@ -204,6 +203,8 @@ void keep_votekilled_player_dead(string targetId, string targetName, DateTime ki
 void survivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, int resultReason) {	
 	PlayerVoteState@ voterState = getPlayerVoteState(voteMenu.voteStarterId);
 
+	g_lastGameVote = g_Engine.time;
+
 	if (chosenOption.value == "enable" || chosenOption.value == "disable") {
 		voterState.handleVoteSuccess();
 		
@@ -228,6 +229,8 @@ void survivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosen
 void semiSurvivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, int resultReason) {	
 	PlayerVoteState@ voterState = getPlayerVoteState(voteMenu.voteStarterId);
 
+	g_lastGameVote = g_Engine.time;
+
 	if (chosenOption.value == "enable" || chosenOption.value == "disable") {
 		voterState.handleVoteSuccess();
 		
@@ -250,6 +253,8 @@ void semiSurvivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ ch
 void restartVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, int resultReason) {	
 	PlayerVoteState@ voterState = getPlayerVoteState(voteMenu.voteStarterId);
 
+	g_lastGameVote = g_Engine.time;
+
 	if (chosenOption.label == "Yes") {
 		voterState.handleVoteSuccess();
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to restart map passed. Restarting in 5 seconds.\n");
@@ -270,6 +275,10 @@ void gameVoteMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTe
 
 	string option;
 	item.m_pUserData.retrieve(option);
+	
+	if (!tryStartGameVote(plr)) {
+		return;
+	}
 	
 	if (option == "kill") {
 		g_Scheduler.SetTimeout("openVoteKillMenu", 0.0f, EHandle(plr));
@@ -445,7 +454,6 @@ void tryStartVotekill(EHandle h_plr, string uniqueId) {
 	@voteParams.optionCallback = @optionChosenCallback;
 	g_gameVote.start(voteParams, plr);
 	
-	g_lastGameVote = g_Engine.time;
 	g_lastVoteStarter = getPlayerUniqueId(plr);
 	
 	g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to kill \"" + target.pev.netname + "\" started by \"" + plr.pev.netname + "\".\n");
@@ -489,7 +497,6 @@ void tryStartSurvivalVote(EHandle h_plr) {
 	@voteParams.optionCallback = @optionChosenCallback;
 	g_gameVote.start(voteParams, plr);
 	
-	g_lastGameVote = g_Engine.time;
 	g_lastVoteStarter = getPlayerUniqueId(plr);
 	
 	string enableDisable = survivalEnabled ? "disable" : "enable";
@@ -532,7 +539,6 @@ void tryStartSemiSurvivalVote(EHandle h_plr) {
 	@voteParams.optionCallback = @optionChosenCallback;
 	g_gameVote.start(voteParams, plr);
 	
-	g_lastGameVote = g_Engine.time;
 	g_lastVoteStarter = getPlayerUniqueId(plr);
 	
 	string enableDisable = survivalEnabled ? "disable" : "enable";
@@ -569,7 +575,6 @@ void tryStartRestartVote(EHandle h_plr) {
 	@voteParams.optionCallback = @optionChosenCallback;
 	g_gameVote.start(voteParams, plr);
 	
-	g_lastGameVote = g_Engine.time;
 	g_lastVoteStarter = getPlayerUniqueId(plr);
 	
 	g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to restart map started by \"" + plr.pev.netname + "\".\n");

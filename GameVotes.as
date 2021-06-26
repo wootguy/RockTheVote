@@ -386,6 +386,12 @@ bool tryStartGameVote(CBasePlayer@ plr) {
 		return false;
 	}
 	
+	if (g_Engine.time < g_SecondsUntilVote.GetInt()) {
+		int timeLeft = int(Math.Ceil(float(g_SecondsUntilVote.GetInt()) - g_Engine.time));
+		g_PlayerFuncs.SayText(plr, "[Vote] Voting will enable in " + timeLeft + " seconds.\n");
+		return false;
+	}
+	
 	// global cooldown
 	float voteDelta = g_Engine.time - g_lastGameVote;
 	float cooldown = GLOBAL_VOTE_COOLDOWN;

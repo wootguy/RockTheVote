@@ -141,11 +141,7 @@ void voteKillFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOpti
 		int killTime = 30;
 		string timeStr = "30 seconds";
 		
-		if (victimState.killedCount >= 3) {
-			killTime = 60*5;
-			timeStr = "5 minutes";
-		}
-		else if (victimState.killedCount >= 2) {
+		if (victimState.killedCount >= 2) {
 			killTime = 60*2;
 			timeStr = "2 minutes";
 		} else if (victimState.killedCount >= 1) {

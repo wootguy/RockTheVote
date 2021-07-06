@@ -410,7 +410,7 @@ class MenuVote {
 		for (uint i = 0; i < voteParams.options.length(); i++) {
 			int voteCount = getOptionVotes(i+1);
 			
-			if (voteCount >= bestVotes) {
+			if (voteParams.options[i].isVotable && voteCount >= bestVotes) {
 				bestOptions.insertLast(voteParams.options[i]);
 			}
 		}

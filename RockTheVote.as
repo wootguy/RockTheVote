@@ -29,7 +29,7 @@ CCVar@ g_ExcludePrevMapsNomMeme;	// limit for nomming a hidden/meme map again
 CCVar@ g_EnableGameVotes;			// enable text menu replacements for the default game votes
 
 // maps that can be nominated with a normal cooldown
-const string votelistFile = "scripts/plugins/cfg/mapvote.txt"; 
+const string votelistFile = "scripts/plugins/cfg/mapvote.cfg"; 
 array<string> g_normalMaps;
 
 // maps that have a large nom cooldown and never randomly show up in the vote menu
@@ -63,14 +63,14 @@ void PluginInit() {
 	g_Hooks.RegisterHook(Hooks::Player::ClientSay, @ClientSay);
 	g_Hooks.RegisterHook(Hooks::Game::MapChange, @MapChange);
 
-	@g_SecondsUntilVote = CCVar("secondsUntilVote", 0, "Delay before players can RTV after map has started", ConCommandFlag::AdminOnly);
-	@g_MaxMapsToVote = CCVar("iMaxMaps", 5, "How many maps can players nominate and vote for later", ConCommandFlag::AdminOnly);
-	@g_VotingPeriodTime = CCVar("secondsToVote", 11, "How long can players vote for a map before a map is chosen", ConCommandFlag::AdminOnly);
+	@g_SecondsUntilVote = CCVar("secondsUntilVote", 120, "Delay before players can RTV after map has started", ConCommandFlag::AdminOnly);
+	@g_MaxMapsToVote = CCVar("iMaxMaps", 7, "How many maps can players nominate and vote for later", ConCommandFlag::AdminOnly);
+	@g_VotingPeriodTime = CCVar("secondsToVote", 40, "How long can players vote for a map before a map is chosen", ConCommandFlag::AdminOnly);
 	@g_PercentageRequired = CCVar("iPercentReq", 66, "0-100, percent of players required to RTV before voting happens", ConCommandFlag::AdminOnly);
-	@g_ExcludePrevMaps = CCVar("iExcludePrevMaps", 800, "How many maps to previous maps to remember", ConCommandFlag::AdminOnly);
-	@g_ExcludePrevMapsNom = CCVar("iExcludePrevMapsNomOnly", 20, "Exclude recently played maps from nominations", ConCommandFlag::AdminOnly);
-	@g_ExcludePrevMapsNomMeme = CCVar("iExcludePrevMapsNomOnlyMeme", 400, "Exclude recently played maps from nominations (hidden maps)", ConCommandFlag::AdminOnly);
-	@g_EnableGameVotes = CCVar("gameVotes", 1, "Text menu replacements for the default game votes", ConCommandFlag::AdminOnly);
+	@g_ExcludePrevMaps = CCVar("iExcludePrevMaps", 5, "How many maps to previous maps to remember", ConCommandFlag::AdminOnly);
+	@g_ExcludePrevMapsNom = CCVar("iExcludePrevMapsNomOnly", 4, "Exclude recently played maps from nominations", ConCommandFlag::AdminOnly);
+	@g_ExcludePrevMapsNomMeme = CCVar("iExcludePrevMapsNomOnlyMeme", 5, "Exclude recently played maps from nominations (hidden maps)", ConCommandFlag::AdminOnly);
+	@g_EnableGameVotes = CCVar("gameVotes", 0, "Text menu replacements for the default game votes", ConCommandFlag::AdminOnly);
 
 	reset();
 	
@@ -134,7 +134,7 @@ void autoStartRtvCheck() {
 	loadCrossPluginAfkState();
 
 	if (canAutoStartRtv()) {
-		startVote("(vote requirement lowered to " + getRequiredRtvCount() + " due to leaving/AFK players)");
+		startVote("(requisito de voto reducido a " + getRequiredRtvCount() + " debido a los desconectados/jugadores AFK)");
 	}
 }
 
@@ -173,7 +173,7 @@ void playSoundGlobal(string file, float volume, int pitch) {
 }
 
 void change_map(string mapname) {
-	g_Log.PrintF("[RTV] changing map to " + mapname + "\n");
+	g_Log.PrintF("[RTV] Cambiando de mapa a " + mapname + "\n");
 	g_EngineFuncs.ServerCommand("changelevel " + mapname + "\n");
 }
 
@@ -257,7 +257,7 @@ void startVote(string reason="") {
 
 	array<MenuOption> menuOptions;
 	
-	menuOptions.insertLast(MenuOption("\\d(exit)"));
+	menuOptions.insertLast(MenuOption("\\d(Cerrar menu)"));
 	menuOptions[0].isVotable = false;
 	
 	for (uint i = 0; i < rtvList.size(); i++) {
@@ -274,7 +274,8 @@ void startVote(string reason="") {
 	@voteParams.finishCallback = @voteFinishCallback;
 	
 	g_rtvVote.start(voteParams, null);
-	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] Vote started! " + reason + "\n");
+	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, reason);
+	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] ¡Votación comenzada!\n");
 }
 
 void voteThinkCallback(MenuVote::MenuVote@ voteMenu, int secondsLeft) {
@@ -293,11 +294,11 @@ void voteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, 
 	string nextMap = chosenOption.value;
 	
 	if (resultReason == MVOTE_RESULT_TIED) {
-		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + nextMap + "\" has been randomly chosen amongst the tied.\n");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + nextMap + "\" ha sido elegido al azar entre los mapas empatados.\n");
 	} else if (resultReason == MVOTE_RESULT_NO_VOTES) {
-		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + nextMap + "\" has been randomly chosen since nobody picked.\n");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + nextMap + "\" fue elegido al azar debido a que nadié votó.\n");
 	} else {
-		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + nextMap + "\" has been chosen!\n");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] \"" + nextMap + "\" ha sido elegido!\n");
 	}
 	
 	playSoundGlobal("buttons/blip3.wav", 1.0f, 70);
@@ -313,8 +314,9 @@ void voteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, 
 
 void mapChosenCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, CBasePlayer@ plr) {
 	if (chosenOption !is null) {
-		if (chosenOption.label == "\\d(exit)") {
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Say \"rtv\" to reopen the menu\n");
+		if (chosenOption.label == "\\d(Cerrar menu)") {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Escribe \"RTV\" para abrir el menu\n");
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTTALK, "[RTV] Escribe RTV para abrir el menu nuevamente.\n");
 			voteMenu.closeMenu(plr);
 		}
 	}
@@ -336,12 +338,12 @@ int tryRtv(CBasePlayer@ plr) {
 	
 	if (g_Engine.time < g_SecondsUntilVote.GetInt()) {
 		int timeLeft = int(Math.Ceil(float(g_SecondsUntilVote.GetInt()) - g_Engine.time));
-		g_PlayerFuncs.SayTextAll(plr, "[RTV] RTV will enable in " + timeLeft + " seconds.  -" + plr.pev.netname + "\n");
+		g_PlayerFuncs.SayTextAll(plr, "[RTV] RTV estará disponible en " + timeLeft + " segundos. \n");
 		return 2;
 	}
 	
 	if (g_playerStates[eidx].didRtv) {
-		g_PlayerFuncs.SayText(plr, "[RTV] " + getCurrentRtvCount() + " of " + getRequiredRtvCount() + " players until vote starts! You already rtv'd.\n");
+		g_PlayerFuncs.SayText(plr, "[RTV] " + getCurrentRtvCount() + " de " + getRequiredRtvCount() + " jugadores hasta que comience la votación.\n");
 		return 2;
 	}
 	
@@ -358,10 +360,10 @@ int tryRtv(CBasePlayer@ plr) {
 }
 
 void sayRtvCount(CBasePlayer@ plr=null) {
-	string msg = "[RTV] " + getCurrentRtvCount() + " of " + getRequiredRtvCount() + " players until vote starts!";
+	string msg = "[RTV] " + getCurrentRtvCount() + " de " + getRequiredRtvCount() + " jugadores hasta que comience la votación.";
 	
 	if (plr !is null) {
-		msg += "  -" + plr.pev.netname;
+//		msg += "  -" + plr.pev.netname;
 		if (g_playerStates[plr.entindex()].afkTime > 0) {
 			msg += " (AFK)";
 		}
@@ -372,7 +374,7 @@ void sayRtvCount(CBasePlayer@ plr=null) {
 
 void cancelRtv(CBasePlayer@ plr) {
 	if (g_rtvVote.status != MVOTE_IN_PROGRESS) {
-		g_PlayerFuncs.SayText(plr, "[RTV] There is no vote to cancel.\n");
+		g_PlayerFuncs.SayText(plr, "[RTV] No hay una votación para cancelar.\n");
 		return;
 	}
 	
@@ -382,7 +384,7 @@ void cancelRtv(CBasePlayer@ plr) {
 	
 	g_rtvVote.cancel();
 	
-	g_PlayerFuncs.SayTextAll(plr, "[RTV] Vote cancelled by " + plr.pev.netname + "!\n");
+	g_PlayerFuncs.SayTextAll(plr, "[RTV] La votación fue cancelada por " + plr.pev.netname + "\n");
 }
 
 // returns number of maps needed to play before it can be nom'd
@@ -400,14 +402,14 @@ int getMapExcludeTime(string mapname, bool printMessage=false, CBasePlayer@ plr=
 	if (isMemeMap && mapsAgo < g_ExcludePrevMapsNomMeme.GetInt()) {
 		int leftToPlay = (g_ExcludePrevMapsNomMeme.GetInt() - mapsAgo) + 1;
 		if (printMessage) {
-			g_PlayerFuncs.SayText(plr, "[RTV] \"" + mapname + "\" excluded until " + leftToPlay + " other nom-able maps have been played with 4+ players.\n");
+			g_PlayerFuncs.SayText(plr, "[RTV] \"" + mapname + "\" excluido hasta que jueguen " + leftToPlay + " otros mapas nominados con mas de 4 jugadores.\n");
 		}
 		return leftToPlay;
 	}
 	else if (!isMemeMap && mapsAgo < g_ExcludePrevMapsNom.GetInt()) {
 		int leftToPlay = (g_ExcludePrevMapsNom.GetInt() - mapsAgo) + 1;
 		if (printMessage) {
-			g_PlayerFuncs.SayText(plr, "[RTV] \"" + mapname + "\" excluded until " + leftToPlay + " other nom-able maps have been played with 4+ players.\n");
+			g_PlayerFuncs.SayText(plr, "[RTV] \"" + mapname + "\" excluido hasta que jueguen " + leftToPlay + " otros mapas nominados con mas de 4 jugadores.\n");
 		}
 		return leftToPlay;
 	}
@@ -430,9 +432,9 @@ void openNomMenu(CBasePlayer@ plr, string mapfilter, array<string> maps) {
 			
 	@g_menus[eidx] = CTextMenu(@nomMenuCallback);
 	
-	string title = "\\yMaps containing \"" + mapfilter + "\"	 ";
+	string title = "\\yMapas que contienen \"" + mapfilter + "\"\n";
 	if (mapfilter.Length() == 0) {
-		title = "\\yNominate...	  ";
+		title = "\\yNomina un mapa de la lista\n";
 	}
 	g_menus[eidx].SetTitle(title);
 	
@@ -479,7 +481,7 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 		}
 		
 		if (similarNames.size() == 0) {
-			g_PlayerFuncs.SayText(plr, "[RTV] No maps containing \"" + mapname + "\" exist.");
+			g_PlayerFuncs.SayText(plr, "[RTV] No se encontró ningun mapa que contenga \"" + mapname + "\" en su nombre.\n");
 		}
 		else if (similarNames.size() > 1 || dontAutoNom) {
 			openNomMenu(plr, mapname, similarNames);
@@ -492,7 +494,7 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 	}
 	
 	if (mapname == g_Engine.mapname) {
-		g_PlayerFuncs.SayText(plr, "[RTV] Can't nominate the current map!\n");
+		g_PlayerFuncs.SayText(plr, "[RTV] ¡No puedes nominar el mapa actual!\n");
 		return false;
 	}
 	
@@ -502,12 +504,12 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 	}
 	
 	if (g_nomList.find(mapname) != -1) {
-		g_PlayerFuncs.SayText(plr, "[RTV] \"" + mapname + "\" has already been nominated.\n");
+		g_PlayerFuncs.SayText(plr, "[RTV] \"" + mapname + "\" ya fue nominado.\n");
 		return false;
 	}
 	
 	if (int(g_nomList.size()) >= g_MaxMapsToVote.GetInt()) {
-		g_PlayerFuncs.SayText(plr, "[RTV] The max number of nominations has been reached!\n");
+		g_PlayerFuncs.SayText(plr, "[RTV] ¡Se alcanzó el número máximo de nominaciones!\n");
 		return false;
 	}
 	
@@ -518,10 +520,10 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 	g_nomList.insertLast(mapname);
 	
 	if (oldNomMap.IsEmpty()) {
-		g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + " nominated \"" + mapname + "\".\n");
+		g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + " nominó \"" + mapname + "\".\n");
 	} else {
 		g_nomList.removeAt(g_nomList.find(oldNomMap));
-		g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + " changed their nomination to \"" + mapname + "\".\n");
+		g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + " cambió su nominación a \"" + mapname + "\".\n");
 	}
 	
 	return true;
@@ -536,7 +538,7 @@ void sendMapList(CBasePlayer@ plr) {
 	float delay = 0;
 	array<string> buffer;
 	
-	g_Scheduler.SetTimeout("delay_print", delay, EHandle(plr), "\n--Map list---------------\n");
+	g_Scheduler.SetTimeout("delay_print", delay, EHandle(plr), "\n\n-- Lista de mapas ------------------------------\n\n");
 	delay += delayStep;
 	
 	// send in chunks to prevent overflows
@@ -565,9 +567,9 @@ void sendMapList(CBasePlayer@ plr) {
 	}
 	
 	delay += delayStep;
-	g_Scheduler.SetTimeout("delay_print", delay, EHandle(plr), "----------------------------- (" + g_everyMap.length() +" maps)\n\n");
+	g_Scheduler.SetTimeout("delay_print", delay, EHandle(plr), "\n----------------------------------------------- \n(" + g_everyMap.length() +" mapas en total)\n\n");
 
-	g_PlayerFuncs.SayText(plr, "[RTV] Map list written to console");
+	g_PlayerFuncs.SayText(plr, "[RTV] Lista de mapas escrita en consola.");
 }
 
 void sendPastMapList(CBasePlayer@ plr) {
@@ -576,19 +578,19 @@ void sendPastMapList(CBasePlayer@ plr) {
 		start = g_previousMaps.length() - g_ExcludePrevMapsNom.GetInt();
 	}
 	
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "--Past maplist---------------\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n-- Mapas jugados previamente ------------------\n\n");
 	for (uint i = start; i < g_previousMaps.length(); i++) {
 		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, " " + ((i-start) + 1) +	 ": "  + g_previousMaps[i] + "\n");
 	}
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "-----------------------------\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "-----------------------------------------------\n\n");
 }
 
 void sendPastMapList_full(CBasePlayer@ plr) {
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "--Past maplist---------------\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n-- Mapas jugados previamente ------------------\n\n");
 	for (uint i = 0; i < g_previousMaps.length(); i++) {
 		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, " " + (i + 1) +	 ": "  + g_previousMaps[i] + "\n");
 	}
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "-----------------------------\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "-----------------------------------------------\n\n");
 }
 
 array<string> loadMapList(string path, bool ignoreDuplicates=false) {
@@ -624,7 +626,7 @@ array<string> loadMapList(string path, bool ignoreDuplicates=false) {
 			}
 			
 			if (!ignoreDuplicates && unique.exists(mapname)) {
-				g_Log.PrintF("[RTV] duplicate map " + mapname + " in list: " + path + "\n");
+				g_Log.PrintF("[RTV] El mapa " + mapname + "está duplicado en lista: " + path + "\n");
 				continue;
 			}
 			
@@ -634,7 +636,7 @@ array<string> loadMapList(string path, bool ignoreDuplicates=false) {
 
 		file.Close();
 	} else {
-		g_Log.PrintF("[RTV] map list file not found: " + path + "\n");
+		g_Log.PrintF("[RTV] No se encontró lista de mapas en: " + path + "\n");
 	}
 	
 	return maplist;
@@ -668,7 +670,7 @@ void loadAllMapLists() {
 	
 	for (uint i = 0; i < g_normalMaps.size(); i++) {
 		if (g_memeMapsHashed.exists(g_normalMaps[i])) {
-			g_Log.PrintF("[RTV] Map \"" + g_normalMaps[i] + "\" should either be in mapvote.cfg or hidden_nom_maps.txt, but not both.\n");
+			g_Log.PrintF("[RTV] El mapa \"" + g_normalMaps[i] + "\" debe estar en mapvote.cfg o hidden_nom_maps.txt, pero no en ambos.\n");
 			continue;
 		}
 	
@@ -696,16 +698,16 @@ void writePreviousMapsList() {
 	string mapname = string(g_Engine.mapname).ToLowercase();
 
 	if (g_PlayerFuncs.GetNumPlayers() < 4) {
-		g_Log.PrintF("[RTV] Not writing previous map - less than 4 players\n");
+		g_Log.PrintF("[RTV] No se escribió el mapa anterior - menos de 4 jugadores.\n");
 		return;
 	}
 	if (g_normalMaps.find(mapname) < 0 && g_hiddenMaps.find(mapname) < 0) {
-		g_Log.PrintF("[RTV] Not writing previous map - " + mapname + " not in vote list(s)\n");
+		g_Log.PrintF("[RTV] No se escribió el mapa anterior - " + mapname + " no está en la lista de mapas.\n");
 		return; // prevent maps in a series from being added to the list
 	}
 
 	if (g_previousMaps.size() > 0 and g_previousMaps[g_previousMaps.size()-1] == mapname) {
-		g_Log.PrintF("[RTV] Not writing previous map - restarts are not counted\n");
+		g_Log.PrintF("[RTV] No se escribe el mapa anterior en previamente jugados, los reinicios no cuentan.\n");
 		return; // don't count map restarts
 	}
 
@@ -730,14 +732,14 @@ void writePreviousMapsList() {
 		f.Close();
 	}
 	else
-		g_Log.PrintF("Failed to open previous maps file: " + previousMapsFile + "\n");
+		g_Log.PrintF("No se pudo abrir el archivo de mapas previamente jugados: " + previousMapsFile + "\n");
 }
 
 bool rejectNonAdmin(CBasePlayer@ plr) {
 	bool isAdmin = g_PlayerFuncs.AdminLevel(plr) >= ADMIN_YES;
 	
 	if (!isAdmin) {
-		g_PlayerFuncs.SayText(plr, "[RTV] Admins only >:|\n");
+		g_PlayerFuncs.SayText(plr, "[RTV] Solo admins >:|\n");
 		return true;
 	}
 	
@@ -750,32 +752,33 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	bool isAdmin = g_PlayerFuncs.AdminLevel(plr) >= ADMIN_YES;
 	
 	if (args.ArgC() >= 1)
+	
 	{
-		if (args[0] == "rtv" and args.ArgC() == 1) {
+		if (args.Arg(0).ToLowercase() == "rtv" and args.ArgC() == 1) {
 			return tryRtv(plr);
 		}
-		else if (args[0] == "nom" || args[0] == "nominate") {
+		else if (args.Arg(0).ToLowercase() == "nom" || args.Arg(0).ToLowercase() == "nominate") {
 			string mapname = args.ArgC() >= 2 ? args[1].ToLowercase() : "";
 			tryNominate(plr, mapname);
 			return 2;
 		}
-		else if (args[0] == "unnom" || args[0] == "unom" || args[0] == "denom") {
+		else if (args.Arg(0).ToLowercase() == "unnom" || args.Arg(0).ToLowercase() == "unom" || args.Arg(0).ToLowercase() == "denom" || args.Arg(0).ToLowercase() == "cancelnom") {
 			RtvState@ state = g_playerStates[plr.entindex()];
 			if (g_rtvVote.status != MVOTE_NOT_STARTED) {
-				g_PlayerFuncs.SayText(plr, "[RTV] Too late for that now!\n");
+				g_PlayerFuncs.SayText(plr, "[RTV] ¡Muy tarde para hacer eso ahora!\n");
 			}
 			else if (state.nom.Length() > 0) {
 				g_nomList.removeAt(g_nomList.find(state.nom));
-				g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + " removed their \"" + state.nom + "\" nomination.\n");
+				g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + " eliminó \"" + state.nom + "\" de su nominación.\n");
 				state.nom = "";
 			} else {
-				g_PlayerFuncs.SayText(plr, "[RTV] You haven't nominated anything yet!\n");
+				g_PlayerFuncs.SayText(plr, "[RTV] ¡Aún no has nominado nada!\n");
 			}
 			return 2;
 		}
-		else if (args[0] == "listnom" || args[0] == "nomlist" || args[0] == "lnom" || args[0] == "noms") {
+		else if (args.Arg(0).ToLowercase() == "listnom" || args.Arg(0).ToLowercase() == "nomlist" || args.Arg(0).ToLowercase() == "lnom" || args.Arg(0).ToLowercase() == "noms") {
 			if (g_nomList.size() > 0) {
-				string msg = "[RTV] Current nominations: ";
+				string msg = "[RTV] Nominaciones actuales: ";
 				
 				for (uint i = 0; i < g_nomList.size(); i++) {
 					msg += (i != 0 ? ", " : "") + g_nomList[i];
@@ -783,36 +786,36 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 				
 				g_PlayerFuncs.SayText(plr, msg + "\n");
 			} else {
-				g_PlayerFuncs.SayText(plr, "[RTV] Nothing has been nominated yet.\n");
+				g_PlayerFuncs.SayText(plr, "[RTV] Aún no se ha nominado nada.\n");
 			}
 			
 			return 2;
 		}
-		else if (args[0] == "maplist" || args[0] == "listmaps") {
+		else if (args.Arg(0).ToLowercase() == "maplist" || args.Arg(0).ToLowercase() == "listmaps") {
 			sendMapList(plr);
 			return 2;
 		}
-		else if (args[0] == ".pastmaplist") {
+		else if (args.Arg(0).ToLowercase() == ".pastmaplist") {
 			sendPastMapList(plr);
 			return 2;
 		}
-		else if (args[0] == ".pastmaplistfull") {
+		else if (args.Arg(0).ToLowercase() == ".pastmaplistfull") {
 			sendPastMapList_full(plr);
 			return 2;
 		}
-		else if (args[0] == ".forcertv") {
+		else if (args.Arg(0).ToLowercase() == ".forcertv") {
 			if (rejectNonAdmin(plr)) {
 				return 2;
 			}
 			
 			if (g_rtvVote.status != MVOTE_NOT_STARTED) {
-				g_PlayerFuncs.SayText(plr, "[RTV] A vote is already in progress!\n");
+				g_PlayerFuncs.SayText(plr, "[RTV] ¡Actualmente hay una votación!\n");
 			} else {
-				startVote("(forced by " + plr.pev.netname + ")");
+				startVote("[RTV] " + plr.pev.netname + " a forzado un RTV.");
 			}
 			return 2;
 		}
-		else if (args[0] == ".cancelrtv") {
+		else if (args.Arg(0).ToLowercase() == ".cancelrtv") {
 			if (rejectNonAdmin(plr)) {
 				return 2;
 			}
@@ -820,19 +823,19 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			cancelRtv(plr);
 			return 2;
 		}
-		else if (args[0] == ".map") {
+		else if (args.Arg(0).ToLowercase() == ".map") {
 			if (rejectNonAdmin(plr)) {
 				return 2;
 			}
 			
 			if (args.ArgC() < 2) {
-				g_PlayerFuncs.SayText(plr, "Usage: .map <mapname>\n");
+				g_PlayerFuncs.SayText(plr, "Modo de uso: .map <mapname>\n");
 				return 2;
 			}
 			
 			string nextmap = args[1].ToLowercase();
 			if (!g_EngineFuncs.IsMapValid(nextmap)) {
-				g_PlayerFuncs.SayText(plr, "Map \"" + nextmap + "\" does not exist!\n");
+				g_PlayerFuncs.SayText(plr, "¡El mapa \"" + nextmap + "\" no existe!\n");
 				return 2;
 			}
 			
@@ -841,30 +844,30 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			
 			@g_timer = g_Scheduler.SetTimeout("change_map", levelChangeDelay, nextmap);
 			
-			g_PlayerFuncs.SayTextAll(plr, "" + plr.pev.netname + " changed map to: " + nextmap + "\n");
+			g_PlayerFuncs.SayTextAll(plr, "" + plr.pev.netname + " cambió de mapa a: " + nextmap + "\n");
 		}
-		else if (args[0] == ".set_nextmap") {
+		else if (args.Arg(0).ToLowercase() == ".set_nextmap") {
 			if (rejectNonAdmin(plr)) {
 				return 2;
 			}
 			
 			if (args.ArgC() < 2) {
-				g_PlayerFuncs.SayText(plr, "Usage: .set_nextmap <mapname>\n");
+				g_PlayerFuncs.SayText(plr, "Modo de uso: .set_nextmap <mapname>\n");
 				return 2;
 			}
 			
 			string nextmap = args[1].ToLowercase();
 			if (!g_EngineFuncs.IsMapValid(nextmap)) {
-				g_PlayerFuncs.SayText(plr, "Map \"" + nextmap + "\" does not exist!\n");
+				g_PlayerFuncs.SayText(plr, "¡El mapa \"" + nextmap + "\" no existe!\n");
 				return 2;
 			}
 			
 			string old = g_MapCycle.GetNextMap();
 			if (old == nextmap) {
-				g_PlayerFuncs.SayText(plr, old + " is already set as the next map!\n");
+				g_PlayerFuncs.SayText(plr, old + " ¡Ya está configurado como el siguiente mapa!\n");
 			} else {
 				g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + nextmap + "\n");
-				g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "" + plr.pev.netname + " changed the next map: " + old + " -> " + nextmap + "\n");
+				g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "" + plr.pev.netname + " cambió el siguiente mapa de " + old + " al " + nextmap + "\n");
 			}
 			
 			return 2;
@@ -893,7 +896,7 @@ HookReturnCode ClientLeave(CBasePlayer@ plr) {
 	
 	if (state.nom.Length() > 0) {
 		g_nomList.removeAt(g_nomList.find(state.nom));
-		g_PlayerFuncs.SayTextAll(plr, "[RTV] \"" + state.nom + "\" is no longer nominated.\n");
+		g_PlayerFuncs.SayTextAll(plr, "[RTV] \"" + state.nom + "\" Ya no está nominado.\n");
 		state.nom = "";
 	}
 	

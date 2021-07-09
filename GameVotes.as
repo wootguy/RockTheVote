@@ -233,9 +233,11 @@ void semiSurvivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ ch
 		if (chosenOption.value == "enable") {
 			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to enable semi-survival mode passed.\n");
 			g_EngineFuncs.ServerCommand("as_command fsurvival.mode 2\n");
+			RelaySay("Semi-survival mode enabled by vote.");
 		} else if (chosenOption.value == "disable") {
 			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to disable semi-survival mode passed.\n");
 			g_EngineFuncs.ServerCommand("as_command fsurvival.mode 0\n");
+			RelaySay("Survival mode disabled by vote.");
 		}
 	}
 	else {
@@ -255,6 +257,7 @@ void restartVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenO
 		voterState.handleVoteSuccess();
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to restart map passed. Restarting in 5 seconds.\n");
 		@g_timer = g_Scheduler.SetTimeout("change_map", MenuVote::g_resultTime + (5-MenuVote::g_resultTime), "" + g_Engine.mapname);
+		RelaySay("Map ended by vote.");
 	}
 	else {
 		int required = RESTART_MAP_PERCENT_REQ;

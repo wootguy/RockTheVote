@@ -27,6 +27,7 @@ CCVar@ g_ExcludePrevMaps;			// limit before a map can be randomly added to the R
 CCVar@ g_ExcludePrevMapsNom;		// limit for nomming a regular map again
 CCVar@ g_ExcludePrevMapsNomMeme;	// limit for nomming a hidden/meme map again
 CCVar@ g_EnableGameVotes;			// enable text menu replacements for the default game votes
+CCVar@ g_EnableForceSurvivalVotes;	// enable semi-survival vote (requires ForceSurvival plugin)
 
 // maps that can be nominated with a normal cooldown
 const string votelistFile = "scripts/plugins/cfg/mapvote.txt"; 
@@ -71,6 +72,7 @@ void PluginInit() {
 	@g_ExcludePrevMapsNom = CCVar("iExcludePrevMapsNomOnly", 20, "Exclude recently played maps from nominations", ConCommandFlag::AdminOnly);
 	@g_ExcludePrevMapsNomMeme = CCVar("iExcludePrevMapsNomOnlyMeme", 400, "Exclude recently played maps from nominations (hidden maps)", ConCommandFlag::AdminOnly);
 	@g_EnableGameVotes = CCVar("gameVotes", 1, "Text menu replacements for the default game votes", ConCommandFlag::AdminOnly);
+	@g_EnableForceSurvivalVotes = CCVar("forceSurvivalVotes", 0, "Enable semi-survival vote (requires ForceSurvival plugin)", ConCommandFlag::AdminOnly);
 
 	reset();
 	

@@ -46,6 +46,7 @@ Note: These commands also work in chat.
 | iExcludePrevMapsNomOnly | Number of maps needed to play before the same map can be nominated again. |
 | iExcludePrevMapsNomOnlyMeme | Number of maps needed to play before a map in `hidden_nom_maps.txt` can be nominated again. |
 | gameVotes | If set to 1, enables the `.vote` command to replace the built-in game votes. Currently only killing and survival mode votes are supported. |
+| forceSurvivalVotes | If set to 1, enables the Semi-Survival game vote (players respawn when everyone dies). Requires [ForceSurvival](https://github.com/wootguy/ForceSurvival) to be installed. |
 
 # Installation
 1. Download the script and save it to `scripts/plugins/RockTheVote.as`
@@ -66,10 +67,12 @@ as_command rtv.secondsToVote 25
 as_command rtv.iPercentReq 66
 as_command rtv.iExcludePrevMaps 800
 as_command rtv.iExcludePrevMapsNomOnly 20
-as_command rtv.iExcludePrevMapsNomOnlyMeme 400
+as_command rtv.gameVotes 1
+as_command rtv.forceSurvivalVotes 0
 ```
 4. Create a file for the normal votable maps, or symlink your `mapvote.cfg` file here: `scripts/plugins/cfg/mapvote.txt`.  
 Maps listed here can be nominated with the normal cooldown (`iExcludePrevMapsNomOnly`). The `addvotemap` text is optional in this list.
 5. Create the hidden map list file: `scripts/plugins/cfg/hidden_nom_maps.txt`  
 Maps listed here have a large nom cooldown (`iExcludePrevMapsNomOnlyMeme`) and never randomly show up in the vote menu or as the next map.
 6. Make sure your `mapcycle.txt` file is up-to-date with what you have installed on the server, and that the number of maps in that file is larger than the `iExcludePrevMaps` CVar.
+7. **[Optional]** Install the [ForceSurvival](https://github.com/wootguy/ForceSurvival) plugin if you want to enable `forceSurvivalVotes`.

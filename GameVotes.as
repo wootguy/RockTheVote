@@ -305,21 +305,21 @@ void openGameVoteMenu(CBasePlayer@ plr) {
 	string survReq = "\\d(" + int(g_EngineFuncs.CVarGetFloat("mp_votesurvivalmoderequired")) + "% needed)";
 	string restartReq = "\\d(" + RESTART_MAP_PERCENT_REQ + "% needed)";
 	
-	g_menus[eidx].AddItem("\\wKill Player " + killReq + "\\y", any("kill"));
+	g_menus[eidx].AddItem("\\wKill player " + killReq + "\\y", any("kill"));
 	
 	bool canVoteSurvival = g_EngineFuncs.CVarGetFloat("mp_survival_voteallow") != 0	&&
 						   g_EngineFuncs.CVarGetFloat("mp_survival_supported") != 0;
 	bool canVoteSemiSurvival = g_EngineFuncs.CVarGetFloat("mp_survival_voteallow") != 0;
 	
 	if (!g_SurvivalMode.IsEnabled()) {
-		g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Enable Survival " + survReq + "\\y", any("survival"));
+		g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Enable survival " + survReq + "\\y", any("survival"));
 		if (g_EnableForceSurvivalVotes.GetInt() != 0)
-			g_menus[eidx].AddItem((canVoteSemiSurvival ? "\\w" : "\\r") + "Enable Semi-Survival " + survReq + "\\y", any("semi-survival"));
+			g_menus[eidx].AddItem((canVoteSemiSurvival ? "\\w" : "\\r") + "Enable semi-survival " + survReq + "\\y", any("semi-survival"));
 	} else {
-		g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Disable Survival " + survReq + "\\y", any("survival"));
+		g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Disable survival " + survReq + "\\y", any("survival"));
 	}
 	
-	g_menus[eidx].AddItem((g_SurvivalMode.IsActive() ? "\\w" : "\\r") + "Restart Map " + restartReq + "\\y", any("restartmap"));
+	g_menus[eidx].AddItem((g_SurvivalMode.IsActive() ? "\\w" : "\\r") + "Restart map " + restartReq + "\\y", any("restartmap"));
 	
 	if (!(g_menus[eidx].IsRegistered()))
 		g_menus[eidx].Register();
@@ -519,7 +519,7 @@ void tryStartSemiSurvivalVote(EHandle h_plr) {
 	bool survivalEnabled = g_SurvivalMode.IsEnabled();
 	string title = (survivalEnabled ? "Disable" : "Enable") + " semi-survival mode?";
 	if (!survivalEnabled) {
-		title += "\n(respawn when everyone dies)";
+		title += "\n(respawn in waves)";
 	}
 	
 	array<MenuOption> options = {

@@ -7,6 +7,7 @@ const int VOTE_FAIL_IGNORE_TIME = 60; // number of minutes to remember failed vo
 const int VOTING_BAN_DURATION = 24*60; // number of minutes a ban lasts (banned from starting votes, not from the server)
 const int GLOBAL_VOTE_COOLDOWN = 5; // just enough time to read results of the previous vote.
 const int RESTART_MAP_PERCENT_REQ = 75;
+const int SEMI_SURVIVAL_PERCENT_REQ = 67;
 
 class PlayerVoteState
 {
@@ -301,6 +302,7 @@ void openGameVoteMenu(CBasePlayer@ plr) {
 	
 	string killReq = "\\d(" + int(g_EngineFuncs.CVarGetFloat("mp_votekillrequired")) + "% needed)";
 	string survReq = "\\d(" + int(g_EngineFuncs.CVarGetFloat("mp_votesurvivalmoderequired")) + "% needed)";
+	string semiSurvReq = "\\d(" + SEMI_SURVIVAL_PERCENT_REQ + "% needed)";
 	string restartReq = "\\d(" + RESTART_MAP_PERCENT_REQ + "% needed)";
 	
 	g_menus[eidx].AddItem("\\wKill player " + killReq + "\\y", any("kill"));
@@ -312,7 +314,7 @@ void openGameVoteMenu(CBasePlayer@ plr) {
 	if (!g_SurvivalMode.IsEnabled()) {
 		g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Enable survival " + survReq + "\\y", any("survival"));
 		if (g_EnableForceSurvivalVotes.GetInt() != 0)
-			g_menus[eidx].AddItem((canVoteSemiSurvival ? "\\w" : "\\r") + "Enable semi-survival " + survReq + "\\y", any("semi-survival"));
+			g_menus[eidx].AddItem((canVoteSemiSurvival ? "\\w" : "\\r") + "Enable semi-survival " + semiSurvReq + "\\y", any("semi-survival"));
 	} else {
 		g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Disable survival " + survReq + "\\y", any("survival"));
 	}
@@ -532,7 +534,7 @@ void tryStartSemiSurvivalVote(EHandle h_plr) {
 	voteParams.options = options;
 	voteParams.percentFailOption = options[1];
 	voteParams.voteTime = int(g_EngineFuncs.CVarGetFloat("mp_votetimecheck"));
-	voteParams.percentNeeded = int(g_EngineFuncs.CVarGetFloat("mp_votesurvivalmoderequired"));
+	voteParams.percentNeeded = SEMI_SURVIVAL_PERCENT_REQ;
 	@voteParams.finishCallback = @semiSurvivalVoteFinishCallback;
 	@voteParams.optionCallback = @optionChosenCallback;
 	g_gameVote.start(voteParams, plr);

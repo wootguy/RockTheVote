@@ -135,8 +135,7 @@ void voteKillFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOpti
 	} else {
 		string steamId = parts[0];
 		CBasePlayer@ target = findPlayer(steamId);
-		PlayerVoteState@ victimState = getPlayerVoteState(getPlayerUniqueId(target));
-		string victimName = steamId;
+		PlayerVoteState@ victimState = getPlayerVoteState(steamId);
 		
 		int killTime = 30;
 		string timeStr = "30 seconds";
@@ -154,12 +153,11 @@ void voteKillFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOpti
 				g_EntityFuncs.Remove(target);
 			}
 			target.m_flRespawnDelayTime = killTime;
-			victimName = target.pev.netname;
 		}
 		
 		voterState.handleVoteSuccess();
-		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote killing \"" + victimName + "\" for " + timeStr + ".\n");
-		keep_votekilled_player_dead(steamId, victimName, DateTime(), killTime);
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote killing \"" + name + "\" for " + timeStr + ".\n");
+		keep_votekilled_player_dead(steamId, name, DateTime(), killTime);
 		victimState.killedCount += 1;
 	}
 }

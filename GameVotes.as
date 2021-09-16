@@ -260,6 +260,17 @@ void restartVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenO
 	}
 }
 
+void customPollFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, int resultReason) {	
+	PlayerVoteState@ voterState = getPlayerVoteState(voteMenu.voteStarterId);
+	voterState.handleVoteSuccess();
+	g_lastGameVote = g_Engine.time;
+	
+	int percent = voteMenu.getOptionVotePercentByValue(chosenOption.value);
+	string relayResult = voteMenu.getResultString();	
+	string chatResult = "[Poll] " + voteMenu.getTitle() + " " + chosenOption.label + " (" + percent + "%)\n";
+	g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, chatResult.Replace("%", "%%") + "\n");
+}
+
 void gameVoteMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTextMenuItem@ item) {
 	if (item is null or plr is null or !plr.IsConnected()) {
 		return;
@@ -601,6 +612,61 @@ int doGameVote(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			if (tryStartGameVote(plr)) {
 				openGameVoteMenu(plr);
 			}
+			
+			return 2;
+		}
+		if (args[0] == ".poll") {
+			if (rejectNonAdmin(plr)) {
+				return 2;
+			}
+			
+			if (args.ArgC() <= 1) {
+				g_PlayerFuncs.SayText(plr, 'Usage for yes/no poll:    .poll "title"\n');
+				g_PlayerFuncs.SayText(plr, 'Usage for custom poll:    .poll "title" "option 1" "option 2" ...\n');
+				return 2;
+			}
+			
+			if (args.ArgC() > 10) {
+				g_PlayerFuncs.SayText(plr, 'Polls can have no more than 8 options\n');
+				return 2;
+			}
+			
+			if (g_gameVote.status == MVOTE_IN_PROGRESS) {
+				g_PlayerFuncs.SayText(plr, "[Vote] Wait for the current vote to finish.\n");
+				return 2;
+			}
+			
+			array<MenuOption> options = {
+				MenuOption("\\d(exit)")
+			};
+			options[0].isVotable = false;
+
+			
+			for (int i = 2; i < args.ArgC(); i++) {
+				options.insertLast(MenuOption(args[i], i));
+			}
+			
+			MenuVoteParams voteParams;
+			
+			if (args.ArgC() <= 2) {
+				options = {
+					MenuOption("Yes"),
+					MenuOption("No"),
+					MenuOption("\\d(exit)")
+				};
+				options[2].isVotable = false;
+				voteParams.percentNeeded = 51;
+			}
+			
+			voteParams.title = args[1];
+			voteParams.options = options;
+			voteParams.voteTime = int(g_EngineFuncs.CVarGetFloat("mp_votetimecheck"));
+			voteParams.forceOpen = false;
+			@voteParams.finishCallback = @customPollFinishCallback;
+			@voteParams.optionCallback = @optionChosenCallback;
+			g_gameVote.start(voteParams, plr);
+			
+			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Poll started by \"" + plr.pev.netname + "\".\n");
 			
 			return 2;
 		}

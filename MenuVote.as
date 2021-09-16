@@ -230,7 +230,8 @@ class MenuVote {
 			int voteCount = getOptionVotes(thisOption);
 			
 			string label = voteParams.options[i].label;
-			bool blinkThisOption = shouldBlinkSelectedOption && selectedOption.label == label;
+			string value = voteParams.options[i].value;
+			bool blinkThisOption = shouldBlinkSelectedOption && selectedOption.value == value;
 			int percent = getVotePercent(voteCount);
 			bool isBestOption = percentBased ? (percent >= voteParams.percentNeeded) : (voteCount == bestVotes);
 			
@@ -345,6 +346,30 @@ class MenuVote {
 		@g_menuTimer = g_Scheduler.SetTimeout("voteThink", 1.0f);
 	}
 	
+	string getTitle() {
+		return voteParams.title;
+	}
+	
+	string getResultString() {
+		string result = voteParams.title;
+	
+		for (uint i = 0; i < voteParams.options.size(); i++) {
+			if (!voteParams.options[i].isVotable) {
+				continue;
+			}
+			
+			string box = (selectedOption.value == voteParams.options[i].value) ? "[x]" : "[ ]";
+			int voteCount = getOptionVotes(i+1);
+			result += "   " + box + " " + voteParams.options[i].label;
+			
+			if (voteCount > 0) {
+				result += " (" + voteCount + ")";
+			}
+		}
+	
+		return result;
+	}
+	
 	int getOptionVotes(int option) {
 		int voteCount = 0;
 		
@@ -378,6 +403,16 @@ class MenuVote {
 	int getOptionVotePercent(string label) {
 		for (uint i = 0; i < voteParams.options.length(); i++) {
 			if (voteParams.options[i].label == label) {
+				return getVotePercent(getOptionVotes(i+1));
+			}
+		}
+		
+		return -1;
+	}
+	
+	int getOptionVotePercentByValue(string value) {
+		for (uint i = 0; i < voteParams.options.length(); i++) {
+			if (voteParams.options[i].value == value) {
 				return getVotePercent(getOptionVotes(i+1));
 			}
 		}

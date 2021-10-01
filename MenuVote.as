@@ -231,7 +231,7 @@ class MenuVote {
 			
 			string label = voteParams.options[i].label;
 			string value = voteParams.options[i].value;
-			bool blinkThisOption = shouldBlinkSelectedOption && selectedOption.value == value;
+			bool blinkThisOption = shouldBlinkSelectedOption && selectedOption.value == value && selectedOption.label == label;
 			int percent = getVotePercent(voteCount);
 			bool isBestOption = percentBased ? (percent >= voteParams.percentNeeded) : (voteCount == bestVotes);
 			

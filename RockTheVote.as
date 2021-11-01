@@ -130,6 +130,12 @@ void loadCrossPluginAfkState() {
 		if (key.Exists()) {
 			g_playerStates[i].afkTime = key.GetInteger();
 		}
+		
+		// don't count loading/disconnected players either
+		CustomKeyvalue key2 = customKeys.GetKeyvalue("$i_state" + i);
+		if (key2.Exists() && key2.GetInteger() > 0 && g_playerStates[i].afkTime == 0) {
+			g_playerStates[i].afkTime = 1;
+		}
 	}
 }
 

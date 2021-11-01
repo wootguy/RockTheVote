@@ -253,7 +253,7 @@ array<string> generateRtvList() {
 		
 		string randomMap = g_randomRtvChoices[Math.RandomLong(0, g_randomRtvChoices.size()-1)];
 		
-		if (rtvList.find(randomMap) == -1) {
+		if (rtvList.find(randomMap) == -1 && g_EngineFuncs.IsMapValid(randomMap)) {
 			rtvList.insertLast(randomMap);
 		}
 	}
@@ -318,6 +318,16 @@ void voteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, 
 	
 	g_Scheduler.SetTimeout("intermission", MenuVote::g_resultTime);
 	@g_timer = g_Scheduler.SetTimeout("change_map", MenuVote::g_resultTime + levelChangeDelay, nextMap);
+	g_Scheduler.SetTimeout("reset_failsafe", MenuVote::g_resultTime + levelChangeDelay + 0.1f);
+}
+
+void reset_failsafe() {
+	g_rtvVote.reset();
+	g_gameVote.reset();
+	g_lastGameVote = 0;
+	g_playerStates.resize(0);
+	g_playerStates.resize(33);
+	g_nomList.resize(0);
 }
 
 void mapChosenCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, CBasePlayer@ plr) {
@@ -469,6 +479,7 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 		return false;
 	}
 
+	int eidx = plr.entindex();
 	bool dontAutoNom = int(mapname.Find("*")) != -1; // player just wants to search for maps with this string
 	mapname.Replace("*", "");
 	bool fullNomMenu = mapname.Length() == 0;
@@ -515,12 +526,16 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 		return false;
 	}
 	
-	if (int(g_nomList.size()) >= g_MaxMapsToVote.GetInt()) {
+	if (int(g_nomList.size()) >= g_MaxMapsToVote.GetInt() && g_playerStates[eidx].nom == "") {
 		g_PlayerFuncs.SayText(plr, "[RTV] The max number of nominations has been reached!\n");
 		return false;
 	}
 	
-	int eidx = plr.entindex();
+	if (!g_EngineFuncs.IsMapValid(mapname)) {
+		g_PlayerFuncs.SayText(plr, "[RTV] \"" + mapname + "\" is not installed! Why is it in the nom list???\n");
+		return false;
+	}
+	
 	string oldNomMap = g_playerStates[eidx].nom;
 	g_playerStates[eidx].nom = mapname;
 	

@@ -81,8 +81,8 @@ void PluginInit() {
 	g_Hooks.RegisterHook(Hooks::Game::MapChange, @MapChange);
 
 	@g_SecondsUntilVote = CCVar("secondsUntilVote", 0, "Delay before players can RTV after map has started", ConCommandFlag::AdminOnly);
-	@g_MaxMapsToVote = CCVar("iMaxMaps", 5, "How many maps can players nominate and vote for later", ConCommandFlag::AdminOnly);
-	@g_VotingPeriodTime = CCVar("secondsToVote", 11, "How long can players vote for a map before a map is chosen", ConCommandFlag::AdminOnly);
+	@g_MaxMapsToVote = CCVar("iMaxMaps", 6, "How many maps can players nominate and vote for later", ConCommandFlag::AdminOnly);
+	@g_VotingPeriodTime = CCVar("secondsToVote", 25, "How long can players vote for a map before a map is chosen", ConCommandFlag::AdminOnly);
 	@g_PercentageRequired = CCVar("iPercentReq", 66, "0-100, percent of players required to RTV before voting happens", ConCommandFlag::AdminOnly);
 	@g_ExcludePrevMaps = CCVar("iExcludePrevMaps", 800, "How many maps to previous maps to remember", ConCommandFlag::AdminOnly);
 	@g_ExcludePrevMapsNom = CCVar("iExcludePrevMapsNomOnly", 20, "Exclude recently played maps from nominations", ConCommandFlag::AdminOnly);
@@ -107,6 +107,9 @@ void MapInit() {
 	g_SoundSystem.PrecacheSound("gman/gman_choose1.wav");
 	g_SoundSystem.PrecacheSound("gman/gman_choose2.wav");
 	g_SoundSystem.PrecacheSound("buttons/blip3.wav");
+	g_Game.PrecacheModel("models/rtv/v_rtv.mdl");
+	g_Game.PrecacheModel("models/rtv/v_rtv2.mdl");
+	g_Game.PrecacheModel("sprites/rtv/scmapdb.spr");
 	
 	reset();
 	
@@ -293,7 +296,7 @@ void startVote(string reason="") {
 	}
 
 	MenuVoteParams voteParams;
-	voteParams.title = "RTV Vote";
+	voteParams.title = "RTV Vote\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n";
 	voteParams.options = menuOptions;
 	voteParams.voteTime = g_VotingPeriodTime.GetInt();
 	voteParams.forceOpen = false;
@@ -922,6 +925,85 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 				g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + nextmap + "\n");
 				g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "" + plr.pev.netname + " changed the next map: " + old + " -> " + nextmap + "\n");
 			}
+			
+			return 2;
+		}
+		else if (args[0] == "y") {
+			/*
+			HUDSpriteParams params;
+			params.spritename = "rtv/scmapdb.spr";
+			params.flags = HUD_SPR_MASKED | HUD_ELEM_SCR_CENTER_X | HUD_ELEM_SCR_CENTER_Y
+				| HUD_ELEM_NO_BORDER | HUD_ELEM_ABSOLUTE_X | HUD_ELEM_ABSOLUTE_Y;
+			params.holdTime = 99999.0f;
+			params.color1 = RGBA( 255, 255, 255, 255 );
+			params.frame = 128;
+			
+			int width = 208;
+			int height = 180;
+			int padding = 4;
+			int offsetX = 0;
+			int offsetY = 40;
+			
+			params.x = -(width + padding) + offsetX;
+			params.y = -(height + padding) + offsetY;	
+			params.channel = 0;
+			g_PlayerFuncs.HudCustomSprite(plr, params);
+			
+			params.x = 0 + offsetX;
+			params.y = -(height + padding) + offsetY;
+			params.channel = 1;
+			g_PlayerFuncs.HudCustomSprite(plr, params);
+			
+			params.x = (width + padding) + offsetX;
+			params.y = -(height + padding) + offsetY;
+			params.channel = 2;
+			g_PlayerFuncs.HudCustomSprite(plr, params);
+			
+			params.x = -(width + padding) + offsetX;
+			params.y = 0 + offsetY;	
+			params.channel = 3;
+			g_PlayerFuncs.HudCustomSprite(plr, params);
+			
+			params.x = 0 + offsetX;
+			params.y = 0 + offsetY;
+			params.channel = 4;
+			g_PlayerFuncs.HudCustomSprite(plr, params);
+			
+			params.x = (width + padding) + offsetX;
+			params.y = 0 + offsetY;
+			params.channel = 5;
+			g_PlayerFuncs.HudCustomSprite(plr, params);
+			*/
+			
+			plr.pev.viewmodel = "models/rtv/v_rtv.mdl";
+
+			dictionary keys;
+			keys["origin"] = plr.pev.origin.ToString();
+			keys["model"] = "sprites/rtv/scmapdb.spr";
+			//keys["model"] = "models/rtv/v_rtv.mdl";
+			keys["rendermode"] = "2";
+			keys["renderamt"] = "255";
+			keys["framerate"] = "2";
+			keys["scale"] =  "0.05";
+			keys["spawnflags"] = "1";
+			keys["targetname"] = "rtv_sprite";
+			CSprite@ spr = cast<CSprite@>(g_EntityFuncs.CreateEntity("env_sprite", keys, true));
+			spr.SetAttachment(plr.edict(), 1);
+			spr.pev.frame = 0;
+			
+			@spr = cast<CSprite@>(g_EntityFuncs.CreateEntity("env_sprite", keys, true));
+			spr.SetAttachment(plr.edict(), 2);
+			spr.pev.frame = 64;
+			
+			@spr = cast<CSprite@>(g_EntityFuncs.CreateEntity("env_sprite", keys, true));
+			spr.SetAttachment(plr.edict(), 3);
+			spr.pev.frame = 128;
+			
+			@spr = cast<CSprite@>(g_EntityFuncs.CreateEntity("env_sprite", keys, true));
+			spr.SetAttachment(plr.edict(), 4);
+			spr.pev.frame = 180;
+			
+			plr.m_iFOV = 70;
 			
 			return 2;
 		}

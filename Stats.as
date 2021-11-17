@@ -8,11 +8,8 @@ const string ROOT_DB_PATH = "scripts/plugins/store/rtv/";
 const uint MAX_DB_BUCKETS = 256;
 
 dictionary g_player_map_history; // maps steam id to PlayerMapHistory
-dictionary g_map_summary_stats; // maps map name to MapSummaryStat
 dictionary g_active_players; // maps steam id to time they joined the map. used to track play time for the previous map
 dictionary g_steam_id_names;
-
-array<MapSummaryStat> g_sortable_map_summaries; // for stat commands
 
 // temp vars for loading all stats
 array<string> g_all_ids;
@@ -31,55 +28,16 @@ class MapStat {
 	uint32 last_played = 0; // unix timestamp, max date of 2106
 	uint16 total_plays = 0;
 	uint8 rating = 0; // does the player like this map?
-	
-	// value only valid in stats command
-	string steamid;
-}
-
-class MapSummaryStat {
-	uint total_plays;
-	uint total_likes;
-	uint total_dislikes;
-	dictionary uniquePlayers; // list of steam ids that have played the map, maps to true value
-	
-	string map_name; // not valid in g_map_summary_stats
-	array<MapStat@> sortablePlayerStats;
-	
-	void sortPlayerStats() {
-		if (sortablePlayerStats.size() != uniquePlayers.size()) {
-			sortablePlayerStats.resize(0);
-			
-			array<string>@ playerKeys = uniquePlayers.getKeys();	
-			for (uint i = 0; i < playerKeys.length(); i++)
-			{
-				MapStat@ playerStat = cast< MapStat@ >(uniquePlayers[playerKeys[i]]);
-				playerStat.steamid = playerKeys[i];
-				sortablePlayerStats.insertLast(@playerStat);
-			}
-		}
-		
-		if (sortablePlayerStats.size() > 0)
-			sortablePlayerStats.sort(function(a,b) { return a.total_plays > b.total_plays; });
-	}
 }
 
 class PlayerMapHistory {
 	HashMapMapStat stats = HashMapMapStat(512); // maps map name to MapStat
 	
 	bool loaded = false;
-	bool calcedStats = false; // history was applied to global map stats
 	File@ fileHandle = null; // for loading across multiple server frames
 	int lineNum = 1;
 	
 	PlayerMapHistory() {}
-	
-	void unload() {
-		loaded = false;
-		lineNum = 1;
-		@fileHandle = null;
-		stats.buckets.resize(0);
-		stats.buckets.resize(1);
-	}
 }
 
 class PlayerActivity {
@@ -102,11 +60,9 @@ void initStats() {
 		
 		string steamid = getPlayerUniqueId(plr);
 		
-		loadPlayerMapStats(steamid, 0, 0, false);
+		loadPlayerMapStats(steamid);
 		g_active_players[steamid] = PlayerActivity();
 	}
-	
-	loadAllPlayerMapStats();
 }
 
 string getPlayerDbPath(string steamid) {
@@ -116,74 +72,7 @@ string getPlayerDbPath(string steamid) {
 	return ROOT_DB_PATH + hash + "/" + safeid + ".txt";
 }
 
-void finishStatsLoad() {
-	sortMapSummaries();
-	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[Info] The lag is over and '.mapstats' works now\n");
-	g_stats_ready = true;
-}
-
-void loadAllPlayerMapStats() {	
-	if (g_all_ids.size() == 0) {		
-		string path = ROOT_DB_PATH + "/steam_ids.txt";
-	
-		File@ file = g_FileSystem.OpenFile(path, OpenFile::READ);
-		
-		if (file is null or !file.IsOpen()) {
-			g_Log.PrintF("[RTV] player ids file not found: " + path + "\n");
-			return;
-		}
-		
-		while (!file.EOFReached()) {
-			string line;
-			file.ReadLine(line);
-			
-			if (line.IsEmpty()) {
-				continue;
-			}
-			
-			array<string> parts = line.Split("\\");
-			
-			if (parts.size() != 2) {
-				g_Log.PrintF("[RTV] player steam id file line: " + line + "\n");
-				return;
-			}
-			
-			string steamid = "STEAM_0:" + parts[0];
-			string name = parts[1];
-			
-			g_all_ids.insertLast(steamid);
-			g_steam_id_names[steamid] = name;
-		}
-		
-		println("Loading stats for " + g_all_ids.size() + " players");
-		loadPlayerMapStats(g_all_ids[g_load_idx], 0, 0, true);
-	}
-	
-	string loadid = g_all_ids[g_load_idx];
-	
-	if (g_player_map_history.exists(loadid)) {
-		PlayerMapHistory@ history = cast<PlayerMapHistory@>( g_player_map_history[loadid] );
-		
-		if (history.calcedStats) {
-			g_load_idx += 1;
-			
-			//if (g_load_idx < g_all_ids.size() and g_load_idx < 2) {
-			if (g_load_idx < g_all_ids.size()) {
-				// will do nothing if already loaded
-				loadPlayerMapStats(g_all_ids[g_load_idx], g_load_idx, g_all_ids.size(), true);
-			} else {
-				println("Finished loading all player map stats");
-				g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[Info] Prepare for extreme server lag.\n");
-				g_Scheduler.SetTimeout("finishStatsLoad", 2.0f);
-				return;
-			}
-		}
-	}
-	
-	g_Scheduler.SetTimeout("loadAllPlayerMapStats", 0.0f);
-}
-
-void loadPlayerMapStats(string steamid, int idx, int total, bool forStatsOnly) {
+void loadPlayerMapStats(string steamid) {
 	PlayerMapHistory@ history = null;
 	
 	if (g_player_map_history.exists(steamid)) {
@@ -197,20 +86,14 @@ void loadPlayerMapStats(string steamid, int idx, int total, bool forStatsOnly) {
 	
 	string path = getPlayerDbPath(steamid);
 	
-	if (history is null or (!history.loaded && history.calcedStats)) {
-		if (history is null) {
-			g_player_map_history.set(steamid, PlayerMapHistory());
-			@history = cast<PlayerMapHistory@>( g_player_map_history[steamid] );
-		}
-		
-		if (total == 0)
-			g_PlayerFuncs.ClientPrintAll(HUD_PRINTCONSOLE, "Loading map history for " + steamid + "\n");
+	if (history is null) {
+		g_player_map_history.set(steamid, PlayerMapHistory());
+		@history = cast<PlayerMapHistory@>( g_player_map_history[steamid] );
 		
 		@history.fileHandle = g_FileSystem.OpenFile(path, OpenFile::READ);
 		
 		if (history.fileHandle is null or !history.fileHandle.IsOpen()) {
 			history.loaded = true;
-			history.calcedStats = true;
 			g_Log.PrintF("[RTV] player stat file not found: " + path + "\n");
 			return;
 		}
@@ -241,15 +124,6 @@ void loadPlayerMapStats(string steamid, int idx, int total, bool forStatsOnly) {
 		stat.total_plays = atoi(parts[2]);
 		stat.rating = atoi(parts[3]);
 		history.stats.put(map_name, stat);
-		
-		if (!g_map_summary_stats.exists(map_name)) {
-			g_map_summary_stats[map_name] = MapSummaryStat();
-		}
-		MapSummaryStat@ MapSummaryStat = cast<MapSummaryStat@>(g_map_summary_stats[map_name]);
-		MapSummaryStat.uniquePlayers[steamid] = @stat;
-		MapSummaryStat.total_plays += stat.total_plays;
-		MapSummaryStat.total_likes += stat.rating == RATE_FAVORITE ? 1 : 0;
-		MapSummaryStat.total_dislikes += stat.rating == RATE_TRASH ? 1 : 0;
 
 		history.lineNum += 1;
 		linesLoaded += 1;
@@ -257,17 +131,9 @@ void loadPlayerMapStats(string steamid, int idx, int total, bool forStatsOnly) {
 
 	if (history.fileHandle.EOFReached()) {
 		history.fileHandle.Close();
-		history.loaded = true;
-		history.calcedStats = true;
-		//g_PlayerFuncs.ClientPrintAll(HUD_PRINTCONSOLE, "[" + idx + " / " + total + "] Loaded " + history.lineNum + " map stats for " + steamid + "\n");
-		//history.stats.stats();
-		//history.stats.resize();	
-
-		if (forStatsOnly) {
-			history.unload(); // don't keep the entire database in memory
-		}		
+		history.loaded = true;	
 	} else {
-		g_Scheduler.SetTimeout("loadPlayerMapStats", 0.0f, steamid, idx, total, forStatsOnly);
+		g_Scheduler.SetTimeout("loadPlayerMapStats", 0.0f, steamid);
 	}
 }
 
@@ -384,14 +250,6 @@ void updatePlayerStats() {
 			MapStat@ mapStat = history.stats.get(g_Engine.mapname);
 			mapStat.total_plays += 1;
 			mapStat.last_played = DateTime().ToUnixTimestamp();
-			
-			if (!g_map_summary_stats.exists(g_Engine.mapname)) {
-				g_map_summary_stats[g_Engine.mapname] = MapSummaryStat();
-			}
-			
-			MapSummaryStat@ MapSummaryStat = cast<MapSummaryStat@>(g_map_summary_stats[g_Engine.mapname]);
-			MapSummaryStat.total_plays += 1;
-			MapSummaryStat.uniquePlayers[steamid] = @mapStat;
 		}
 		
 		g_steam_id_names[steamid] = "" + plr.pev.netname;
@@ -460,165 +318,6 @@ void writeActivePlayerStats() {
 		f.Close();
 		println("Wrote player stat file: " + path);
 	}
-}
-
-void sortMapSummaries() {
-	if (g_sortable_map_summaries.size() != g_map_summary_stats.size()) {
-		g_sortable_map_summaries.resize(0);
-		
-		array<string>@ summaryKeys = g_map_summary_stats.getKeys();	
-		for (uint i = 0; i < summaryKeys.length(); i++)
-		{
-			MapSummaryStat@ summary = cast< MapSummaryStat@ >(g_map_summary_stats[summaryKeys[i]]);
-			summary.map_name = summaryKeys[i];
-			g_sortable_map_summaries.insertLast(summary);
-		}
-	}
-	
-	if (g_sortable_map_summaries.size() > 0)
-		g_sortable_map_summaries.sort(function(a,b) { return a.total_plays > b.total_plays; });
-}
-
-void printPlayerStat(CBasePlayer@ plr, int k, MapStat@ stat, bool isYou) {
-    int position = k+1;
-    string line = "" + position + ") ";
-    
-    if (position < 100) {
-        line = " " + line;
-    }
-    if (position < 10) {
-        line = " " + line;
-    }
-    
-    line = (isYou ? "*" : " ") + line;
-            
-    string name;
-	g_steam_id_names.get(stat.steamid, name);
-	
-    int padding = 32 - name.Length();
-    for (int p = 0; p < padding; p++) {
-        name += " ";
-    }
-    line += name;
-    
-    string count = stat.total_plays;
-    padding = 7 - count.Length();
-    for (int p = 0; p < padding; p++) {
-        count += " ";
-    }
-    line += count;
-    
-    line += stat.steamid;
-    
-    g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, line + "\n");
-}
-
-void showMapStats_singleMap(CBasePlayer@ plr, string mapName) {
-    mapName = mapName.ToLowercase();
-    const int limit = 20;
-    string steamid = g_EngineFuncs.GetPlayerAuthId( plr.edict() );
-    
-    if (!g_map_summary_stats.exists(mapName)) {
-        g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "No stats found for " + mapName);
-        return;
-    }
-	
-	MapSummaryStat@ stat = cast<MapSummaryStat@>(g_map_summary_stats[mapName]);
-    
-    g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\nTop " + limit + " enjoyers of \"" + mapName + "\"\n");
-    g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n      Name                            Plays  Steam ID");
-    g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n-----------------------------------------------------------------\n");
-
-	stat.sortPlayerStats();
-	
-    int yourPosition = -1;
-    MapStat@ yourStat = null;
-    for (uint k = 0; k < stat.sortablePlayerStats.size(); k++) {
-    
-        bool isYou = stat.sortablePlayerStats[k].steamid == steamid;
-        if (isYou) {
-            yourPosition = k;
-            @yourStat = @stat.sortablePlayerStats[k];
-        }
-        
-        if (k < limit) {
-            printPlayerStat(plr, k, stat.sortablePlayerStats[k], isYou);
-        }
-    }
-    
-    if (yourPosition > limit) {
-        g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "  ...\n");
-        printPlayerStat(plr, yourPosition, yourStat, true);
-    }
-    
-    g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "-----------------------------------------------------------------\n\n");
-    g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Total players: " + stat.sortablePlayerStats.size() + "\n");
-    g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Total plays:   " + stat.total_plays + "\n\n");
-}
-
-void showMapStats(CBasePlayer@ plr, string mapName, bool topNotBottom) {
-	if (mapName.Length() > 0) {
-		showMapStats_singleMap(plr, mapName);
-		return;
-	}
-	
-	sortMapSummaries();
-	
-	uint mapLimit = 50;
-    
-    g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\nStats for the " + (topNotBottom ? "top" : "bottom") + " " + mapLimit + " maps\n");
-    g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n      Map                           Plays    Players");
-    g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n-----------------------------------------------------\n");
-
-    int position = 1;
-    int allMapPlays = 0;
-    for (uint i = 0; i < mapLimit; i++) { 
-		int idx = topNotBottom ? i : g_sortable_map_summaries.size() - (i+1);
-		allMapPlays += g_sortable_map_summaries[idx].total_plays;
-	
-        string line = " " + position + ") " + g_sortable_map_summaries[idx].map_name;
-        
-        if (position < 100) {
-            line = " " + line;
-        }
-        if (position < 10) {
-            line = " " + line;
-        }
-        position++;
-        
-        int padding = 30 - g_sortable_map_summaries[idx].map_name.Length();
-        for (int k = 0; k < padding; k++)
-            line += " ";
-        
-        string count = g_sortable_map_summaries[idx].total_plays;
-        padding = 9 - count.Length();
-        for (int k = 0; k < padding; k++)
-            count += " ";
-        line += count;
-        
-        string users = g_sortable_map_summaries[idx].uniquePlayers.size();
-        padding = 8 - users.Length();
-        for (int k = 0; k < padding; k++)
-            users += " ";
-        line += users;
-        
-        line += "\n";
-		
-        g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, line);
-    }
-
-    string totals = allMapPlays;
-	/*
-    int padding = 9 - totals.Length();
-    for (int k = 0; k < padding; k++)
-        totals += " ";
-    totals += unique_users.size();
-	*/
-
-    g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "-----------------------------------------------------\n");
-    //g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "                  Total:  " + totals + "\n");
-    g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\nPlays   = Number of times an individual player has played the map.");
-    g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\nPlayers = Number of unique players that have played the map.\n\n");
 }
 
 string formatLastPlayedTime(int seconds) {

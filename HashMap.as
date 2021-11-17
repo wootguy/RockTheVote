@@ -16,13 +16,13 @@ uint64 hash_FNV1a(string key)
 
 class HashMapEntryMapStat {
 	string key;
-	MapStat@ value;
-	
+	MapStat value;
+
 	HashMapEntryMapStat() {}
 	
-	HashMapEntryMapStat(string key, MapStat@ value) {
+	HashMapEntryMapStat(string key, MapStat value) {
 		this.key = key;
-		@this.value = @value;
+		this.value = value;
 	}
 }
 
@@ -91,12 +91,12 @@ class HashMapMapStat
 		return items;
 	}
 	
-	void put(string key, MapStat@ value) {
+	void put(string key, MapStat value) {
 		int idx = hash_FNV1a(key) % buckets.size();
 		
 		for (uint i = 0; i < buckets[idx].size(); i++) {
 			if (buckets[idx][i].key == key) {
-				@buckets[idx][i].value = @value;
+				buckets[idx][i].value = value;
 				return;
 			}
 		}

@@ -154,20 +154,15 @@ def build_db():
 	
 	print("Writing %s player stat files..." % len(player_map_stats))
 	
-	steam_ids_path = os.path.join(rtv_db_path, "steam_ids.txt")
-	
-	with open(steam_ids_path, "w") as all_ids:
-		for player, player_stats in player_map_stats.items():
-			steamid = player.replace(":", "_")
-			hash = hash_FNV1a(steamid) % MAX_BUCKETS
-			
-			all_ids.write("%s\\%s\n" % (player.replace('STEAM_0:', ''), player_stats['name'].encode("ascii", 'replace').decode('ascii')))
-			
-			player_stat_path = os.path.join(rtv_db_path, "%s" % hash, steamid + ".txt")
-			
-			with open(player_stat_path, "w") as f:
-				for map in player_stats['maps'].keys():
-					f.write('%s %s %s 0\n' % (map, player_stats['maps'][map]['last_play_time'], player_stats['maps'][map]['total_plays']))
+	for player, player_stats in player_map_stats.items():
+		steamid = player.replace(":", "_")
+		hash = hash_FNV1a(steamid) % MAX_BUCKETS
+		
+		player_stat_path = os.path.join(rtv_db_path, "%s" % hash, steamid + ".txt")
+		
+		with open(player_stat_path, "w") as f:
+			for map in player_stats['maps'].keys():
+				f.write('%s %s %s 0\n' % (map, player_stats['maps'][map]['last_play_time'], player_stats['maps'][map]['total_plays']))
 
 build_db()
 

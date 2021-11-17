@@ -32,7 +32,6 @@ CClientCommand set_nextmap("set_nextmap", "Set the next map cycle", @consoleCmd)
 CClientCommand map("map", "Force a map change", @consoleCmd);
 CClientCommand vote("vote", "Start a vote or reopen the vote menu", @consoleCmd);
 CClientCommand poll("poll", "Start a custom poll", @consoleCmd);
-CClientCommand mapstats("mapstats", "Show play stats for the top maps or for a specific map", @consoleCmd);
 
 CCVar@ g_SecondsUntilVote;
 CCVar@ g_MaxMapsToVote;
@@ -944,7 +943,7 @@ HookReturnCode ClientSay( SayParameters@ pParams ) {
 
 HookReturnCode ClientJoin( CBasePlayer@ plr ) {	
 	string steamid = getPlayerUniqueId(plr);
-	loadPlayerMapStats(steamid, 0, 0, false);
+	loadPlayerMapStats(steamid);
 	
 	if (g_active_players.exists(steamid)) {
 		PlayerActivity@ activity = cast<PlayerActivity@>(g_active_players[steamid]);

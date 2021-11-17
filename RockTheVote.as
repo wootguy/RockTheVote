@@ -1,5 +1,7 @@
 #include "MenuVote"
 #include "GameVotes"
+#include "Stats"
+#include "HashMap"
 
 // TODO:
 // - dont show log message for <4 plaers on classic restart
@@ -11,6 +13,17 @@ class RtvState {
 	int afkTime = 0;		// AFK players ignored for rtv requirement
 }
 
+class SortableMap {
+	string map;
+	int sort; // value used for sorting
+	
+	SortableMap() {}
+	
+	SortableMap(string map) {
+		this.map = map;
+	}
+}
+
 CClientCommand forcertv("forcertv", "Lets admin force a vote", @consoleCmd);
 CClientCommand cancelrtv("cancelrtv", "Lets admin cancel an ongoing RTV vote", @consoleCmd);
 CClientCommand pastmaplist("pastmaplist", "Show recently played maps (up to g_ExcludePrevMapsNom)", @consoleCmd);
@@ -19,6 +32,7 @@ CClientCommand set_nextmap("set_nextmap", "Set the next map cycle", @consoleCmd)
 CClientCommand map("map", "Force a map change", @consoleCmd);
 CClientCommand vote("vote", "Start a vote or reopen the vote menu", @consoleCmd);
 CClientCommand poll("poll", "Start a custom poll", @consoleCmd);
+CClientCommand mapstats("mapstats", "Show play stats for the top maps or for a specific map", @consoleCmd);
 
 CCVar@ g_SecondsUntilVote;
 CCVar@ g_MaxMapsToVote;
@@ -43,9 +57,9 @@ const string previousMapsFile = "scripts/plugins/store/previous_maps.txt";
 array<string> g_previousMaps;
 
 array<RtvState> g_playerStates;
-array<string> g_everyMap; // sorted combination of normal and hidden maps
+array<SortableMap> g_everyMap; // sorted combination of normal and hidden maps
 array<string> g_randomRtvChoices; // normal votable maps which aren't in the previous map list
-array<string> g_randomCycleMaps; // map cycle maps which aren't in the previous map list
+array<SortableMap> g_randomCycleMaps; // map cycle maps which aren't in the previous map list
 array<string> g_nomList; // maps nominated by players
 dictionary g_prevMapPosition; // maps a map name to its position in the previous map list (for faster nom menus)
 dictionary g_memeMapsHashed; // for faster meme map checks
@@ -61,6 +75,7 @@ void PluginInit() {
 
 	g_Module.ScriptInfo.SetAuthor("w00tguy");
 	g_Module.ScriptInfo.SetContactInfo("https://github.com/wootguy");
+	g_Hooks.RegisterHook( Hooks::Player::ClientPutInServer, @ClientJoin );
 	g_Hooks.RegisterHook(Hooks::Player::ClientDisconnect, @ClientLeave);
 	g_Hooks.RegisterHook(Hooks::Player::ClientSay, @ClientSay);
 	g_Hooks.RegisterHook(Hooks::Game::MapChange, @MapChange);
@@ -76,6 +91,8 @@ void PluginInit() {
 	@g_EnableForceSurvivalVotes = CCVar("forceSurvivalVotes", 0, "Enable semi-survival vote (requires ForceSurvival plugin)", ConCommandFlag::AdminOnly);
 
 	reset();
+	
+	initStats();
 	
 	g_Scheduler.SetInterval("autoStartRtvCheck", 1.0f, -1);
 	g_Scheduler.SetInterval("reduceKillPenalties", 60*60, -1);
@@ -93,14 +110,16 @@ void MapInit() {
 	
 	reset();
 	
-	string randomMap = g_randomCycleMaps[Math.RandomLong(0, g_randomCycleMaps.size()-1)];
+	string randomMap = g_randomCycleMaps[Math.RandomLong(0, g_randomCycleMaps.size()-1)].map;
 	println("[RTV] Random next map: " + randomMap);
 	g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + randomMap + "\n");
 }
 
 HookReturnCode MapChange() {
 	writePreviousMapsList();
-	g_Scheduler.RemoveTimer(g_timer);
+	writeMapStats();
+	g_active_players.clear();
+	g_Scheduler.RemoveTimer(g_timer);	
 	return HOOK_CONTINUE;
 }
 
@@ -488,12 +507,14 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 		array<string> similarNames;
 		
 		if (fullNomMenu) {
-			similarNames = g_everyMap;
+			for (uint i = 0; i < g_everyMap.size(); i++) {
+				similarNames.insertLast(g_everyMap[i].map);
+			}
 		}
 		else {
 			for (uint i = 0; i < g_everyMap.size(); i++) {
-				if (int(g_everyMap[i].Find(mapname)) != -1) {
-					similarNames.insertLast(g_everyMap[i]);
+				if (int(g_everyMap[i].map.Find(mapname)) != -1) {
+					similarNames.insertLast(g_everyMap[i].map);
 				}
 			}
 		}
@@ -532,7 +553,7 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 	}
 	
 	if (!g_EngineFuncs.IsMapValid(mapname)) {
-		g_PlayerFuncs.SayText(plr, "[RTV] \"" + mapname + "\" is not installed! Why is it in the nom list???\n");
+		g_PlayerFuncs.SayText(plr, "[RTV] \"" + mapname + "\" does not exist! Why is it in the nom list???\n");
 		return false;
 	}
 	
@@ -567,8 +588,8 @@ void sendMapList(CBasePlayer@ plr) {
 	for (uint i = 0; i < g_everyMap.length(); i += 4) {
 		string msg = "";
 		for (uint k = 0; k < 4 && i + k < g_everyMap.length(); k++) {
-			msg += g_everyMap[i + k];
-			int padding = (g_maxNomMapNameLength + 1) - g_everyMap[i + k].Length();
+			msg += g_everyMap[i + k].map;
+			int padding = (g_maxNomMapNameLength + 1) - g_everyMap[i + k].map.Length();
 			for (int p = 0; p < padding; p++) {
 				msg += " ";
 			}
@@ -682,7 +703,7 @@ void loadAllMapLists() {
 	g_randomCycleMaps.resize(0);
 	
 	for (uint i = 0; i < g_hiddenMaps.size(); i++) {
-		g_everyMap.insertLast(g_hiddenMaps[i]);
+		g_everyMap.insertLast(SortableMap(g_hiddenMaps[i]));
 		g_memeMapsHashed[g_hiddenMaps[i]] = true;
 		
 		if (g_hiddenMaps[i].Length() > g_maxNomMapNameLength) {
@@ -696,7 +717,7 @@ void loadAllMapLists() {
 			continue;
 		}
 	
-		g_everyMap.insertLast(g_normalMaps[i]);
+		g_everyMap.insertLast(SortableMap(g_normalMaps[i]));
 		
 		if (g_normalMaps[i].Length() > g_maxNomMapNameLength) {
 			g_maxNomMapNameLength = g_normalMaps[i].Length();
@@ -709,11 +730,11 @@ void loadAllMapLists() {
 	array<string> mapCycleMaps = g_MapCycle.GetMapCycle();
 	for (uint i = 0; i < mapCycleMaps.size(); i++) {
 		if (!g_prevMapPosition.exists(mapCycleMaps[i]) and mapCycleMaps[i] != g_Engine.mapname) {
-			g_randomCycleMaps.insertLast(mapCycleMaps[i]);
+			g_randomCycleMaps.insertLast(SortableMap(mapCycleMaps[i]));
 		}
 	}
 
-	g_everyMap.sortAsc();
+	g_everyMap.sort(function(a,b) { return a.map.Compare(b.map) < 0; });
 }
 
 void writePreviousMapsList() {
@@ -775,6 +796,17 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	
 	if (args.ArgC() >= 1)
 	{
+		if (args[0] == '.mapstats') {
+			if (!g_stats_ready) {
+				int percent = int((g_load_idx / float(g_all_ids.size()))*100);
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Map stats aren't ready yet. (" + percent + "%% loaded)\n");
+			} else {
+				g_PlayerFuncs.SayText(plr, "[Info] Map stats sent to your console.\n");
+				showMapStats(plr, args[1], true);
+			}
+            
+			return 2;
+        }
 		if (args[0] == "rtv" and args.ArgC() == 1) {
 			return tryRtv(plr);
 		}
@@ -910,7 +942,23 @@ HookReturnCode ClientSay( SayParameters@ pParams ) {
 	return HOOK_CONTINUE;
 }
 
+HookReturnCode ClientJoin( CBasePlayer@ plr ) {	
+	string steamid = getPlayerUniqueId(plr);
+	loadPlayerMapStats(steamid, 0, 0, false);
+	
+	if (g_active_players.exists(steamid)) {
+		PlayerActivity@ activity = cast<PlayerActivity@>(g_active_players[steamid]);
+		activity.lastActivity = g_Engine.time;
+	} else {
+		g_active_players[steamid] = PlayerActivity();
+	}
+	
+	
+	return HOOK_CONTINUE;
+}
+
 HookReturnCode ClientLeave(CBasePlayer@ plr) {
+	string steamid = getPlayerUniqueId(plr);
 	RtvState@ state = g_playerStates[plr.entindex()];
 	state.didRtv = false;
 	state.afkTime = 0;
@@ -919,6 +967,11 @@ HookReturnCode ClientLeave(CBasePlayer@ plr) {
 		g_nomList.removeAt(g_nomList.find(state.nom));
 		g_PlayerFuncs.SayTextAll(plr, "[RTV] \"" + state.nom + "\" is no longer nominated.\n");
 		state.nom = "";
+	}
+	
+	if (g_active_players.exists(steamid)) {
+		PlayerActivity@ activity = cast<PlayerActivity@>(g_active_players[steamid]);
+		activity.lastActivity = g_Engine.time;		
 	}
 	
 	return HOOK_CONTINUE;

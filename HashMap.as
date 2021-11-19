@@ -52,8 +52,12 @@ class HashMapMapStat
 		buckets.resize(size);
 	}
 	
-	MapStat@ get(string key) {
-		int idx = hash_FNV1a(key) % buckets.size();
+	MapStat@ get(string key) {		
+		return get(key, hash_FNV1a(key));
+	}
+	
+	MapStat@ get(string key, uint64 hashedKey) {
+		int idx = hashedKey % buckets.size();
 		
 		for (uint i = 0; i < buckets[idx].size(); i++) {
 			if (buckets[idx][i].key == key) {

@@ -15,12 +15,14 @@ class RtvState {
 
 class SortableMap {
 	string map;
-	int sort; // value used for sorting
+	uint64 hashKey; // pre-hashed key for faster lookups
+	uint64 sort; // value used for sorting
 	
 	SortableMap() {}
 	
 	SortableMap(string map) {
 		this.map = map;
+		hashKey = hash_FNV1a(map);
 	}
 }
 
@@ -32,6 +34,9 @@ CClientCommand set_nextmap("set_nextmap", "Set the next map cycle", @consoleCmd)
 CClientCommand map("map", "Force a map change", @consoleCmd);
 CClientCommand vote("vote", "Start a vote or reopen the vote menu", @consoleCmd);
 CClientCommand poll("poll", "Start a custom poll", @consoleCmd);
+CClientCommand lastplays("lastplays", "Show previous play times for a map", @consoleCmd);
+CClientCommand recentmaps("recentmaps", "Show recently played maps", @consoleCmd);
+CClientCommand newmaps("newmaps", "Show maps that haven't been played for the longest time", @consoleCmd);
 
 CCVar@ g_SecondsUntilVote;
 CCVar@ g_MaxMapsToVote;
@@ -66,7 +71,7 @@ MenuVote::MenuVote g_rtvVote;
 uint g_maxNomMapNameLength = 0; // used for even spacing in the full console map list
 CScheduledFunction@ g_timer = null;
 
-const float levelChangeDelay = 5.0f; // time in seconds to show intermission view before changing levels
+const float levelChangeDelay = 5.0f; // time in seconds intermission is shown for game_end
 
 
 
@@ -109,14 +114,15 @@ void MapInit() {
 	
 	reset();
 	
-	string randomMap = g_randomCycleMaps[Math.RandomLong(0, g_randomCycleMaps.size()-1)].map;
-	println("[RTV] Random next map: " + randomMap);
+	string randomMap = getMostFreshMap(g_randomCycleMaps); // something most haven't played in the longest time
+	
+	println("[RTV] Most fresh next map: " + randomMap);
 	g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + randomMap + "\n");
 }
 
 HookReturnCode MapChange() {
 	writePreviousMapsList();
-	writeMapStats();
+	writeActivePlayerStats();
 	g_active_players.clear();
 	g_Scheduler.RemoveTimer(g_timer);	
 	return HOOK_CONTINUE;
@@ -131,6 +137,7 @@ void reset() {
 	g_rtvVote.reset();
 	g_gameVote.reset();
 	g_lastGameVote = 0;
+	g_anyone_joined = false;
 }
 
 void loadCrossPluginAfkState() {
@@ -199,14 +206,11 @@ void playSoundGlobal(string file, float volume, int pitch) {
 	}
 }
 
-void change_map(string mapname) {
-	g_Log.PrintF("[RTV] changing map to " + mapname + "\n");
-	g_EngineFuncs.ServerCommand("changelevel " + mapname + "\n");
-}
-
-void intermission() {
-	NetworkMessage message(MSG_ALL, NetworkMessages::SVC_INTERMISSION, null);
-	message.End();
+void game_end(string nextMap) {
+	// using a game_end instead of changelevel command so that game_end detection works here and in other plugins
+	g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + nextMap + "\n");
+	CBaseEntity@ endEnt = g_EntityFuncs.CreateEntity("game_end");
+	endEnt.Use(null, null, USE_TOGGLE);
 }
 
 
@@ -292,7 +296,7 @@ void startVote(string reason="") {
 	}
 
 	MenuVoteParams voteParams;
-	voteParams.title = "RTV Vote\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n";
+	voteParams.title = "RTV Vote";
 	voteParams.options = menuOptions;
 	voteParams.voteTime = g_VotingPeriodTime.GetInt();
 	voteParams.forceOpen = false;
@@ -331,11 +335,7 @@ void voteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, 
 	
 	g_Log.PrintF("[RTV] chose " + nextMap + "\n");
 	
-	// rarely the next cycle map is changed to instead of the rtv map. No idea why.
-	g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + nextMap + "\n");
-	
-	g_Scheduler.SetTimeout("intermission", MenuVote::g_resultTime);
-	@g_timer = g_Scheduler.SetTimeout("change_map", MenuVote::g_resultTime + levelChangeDelay, nextMap);
+	g_Scheduler.SetTimeout("game_end", MenuVote::g_resultTime, nextMap);
 	g_Scheduler.SetTimeout("reset_failsafe", MenuVote::g_resultTime + levelChangeDelay + 0.1f);
 }
 
@@ -501,8 +501,15 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 	bool dontAutoNom = int(mapname.Find("*")) != -1; // player just wants to search for maps with this string
 	mapname.Replace("*", "");
 	bool fullNomMenu = mapname.Length() == 0;
+	
+	bool mapExists = false;
+	for (uint i = 0; i < g_everyMap.size(); i++) {
+		if (g_everyMap[i].map == mapname) {
+			mapExists = true;
+		}
+	}
 
-	if (fullNomMenu || dontAutoNom || g_everyMap.find(mapname) < 0) {
+	if (fullNomMenu || dontAutoNom || !mapExists) {
 		array<string> similarNames;
 		
 		if (fullNomMenu) {
@@ -788,6 +795,38 @@ bool rejectNonAdmin(CBasePlayer@ plr) {
 	return false;
 }
 
+// find a player by name or partial name
+CBasePlayer@ getPlayerByName(CBasePlayer@ caller, string name)
+{
+	name = name.ToLowercase();
+	int partialMatches = 0;
+	CBasePlayer@ partialMatch;
+	CBaseEntity@ ent = null;
+	do {
+		@ent = g_EntityFuncs.FindEntityByClassname(ent, "player");
+		if (ent !is null) {
+			CBasePlayer@ plr = cast<CBasePlayer@>(ent);
+			string plrName = string(plr.pev.netname).ToLowercase();
+			if (plrName == name)
+				return plr;
+			else if (plrName.Find(name) != uint(-1))
+			{
+				@partialMatch = plr;
+				partialMatches++;
+			}
+		}
+	} while (ent !is null);
+	
+	if (partialMatches == 1) {
+		return partialMatch;
+	} else if (partialMatches > 1) {
+		g_PlayerFuncs.SayText(caller, 'There are ' + partialMatches + ' players that have "' + name + '" in their name. Be more specific.\n');
+	} else {
+		g_PlayerFuncs.SayText(caller, 'There is no player named "' + name + '".\n');
+	}
+	
+	return null;
+}
 
 // return 0 = chat not handled, 1 = handled and show chat, 2 = handled and hide chat
 int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
@@ -795,18 +834,23 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	
 	if (args.ArgC() >= 1)
 	{
-		if (args[0] == '.mapstats') {
-			if (!g_stats_ready) {
-				int percent = int((g_load_idx / float(g_all_ids.size()))*100);
-				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Map stats aren't ready yet. (" + percent + "%% loaded)\n");
-			} else {
-				g_PlayerFuncs.SayText(plr, "[Info] Map stats sent to your console.\n");
-				showMapStats(plr, args[1], true);
-			}
-            
+		if (args[0] == ".recentmaps") {
+			CBasePlayer@ target = args[1].Length() > 0 ? getPlayerByName(plr, args[1]) : plr;
+			if (target !is null)
+				showFreshMaps(plr, target, g_everyMap, true);
 			return 2;
-        }
-		if (args[0] == "rtv" and args.ArgC() == 1) {
+		}
+		else if (args[0] == ".newmaps") {
+			CBasePlayer@ target = args[1].Length() > 0 ? getPlayerByName(plr, args[1]) : plr;
+			if (target !is null)
+				showFreshMaps(plr, target, g_everyMap, false);
+			return 2;
+		}
+		else if (args[0] == ".lastplays") {
+			showLastPlayedTimes(plr, args.ArgC() == 1 ? string(g_Engine.mapname) : args[1]);
+			return 2;
+		}
+		else if (args[0] == "rtv" and args.ArgC() == 1) {
 			return tryRtv(plr);
 		}
 		else if (args[0] == "nom" || args[0] == "nominate") {
@@ -891,10 +935,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 				return 2;
 			}
 			
-			NetworkMessage message(MSG_ALL, NetworkMessages::SVC_INTERMISSION, null);
-			message.End();
-			
-			@g_timer = g_Scheduler.SetTimeout("change_map", levelChangeDelay, nextmap);
+			game_end(nextmap);
 			
 			g_PlayerFuncs.SayTextAll(plr, "" + plr.pev.netname + " changed map to: " + nextmap + "\n");
 		}
@@ -952,6 +993,7 @@ HookReturnCode ClientJoin( CBasePlayer@ plr ) {
 		g_active_players[steamid] = PlayerActivity();
 	}
 	
+	g_anyone_joined = true;
 	
 	return HOOK_CONTINUE;
 }

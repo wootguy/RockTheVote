@@ -2,6 +2,32 @@
 // DB size for TWLZ is about 30 MB (50k unique players, mostly short visitors)
 const string ROOT_DB_PATH = "scripts/plugins/store/rtv/";
 
+// TODO
+// - add map prefs
+// - replace game_end with custom ent so script can run next map logic
+// - categorize every map or add tags
+// - add categories to prefs and nom menu
+// - detect series maps so playing 50% of a series counts as a play (I always join HL late)
+
+// Your map preferences:
+// 1. Preferences enabled: [Yes, No]
+// 2. Types: [action, puzzle, chill, skill, meme, Any]
+// 3. Quality: [good, bad, Any]
+// 4. Mode: [survival, casual, Any]
+
+// Map preferences -> Select categories
+// 1. ..
+// 2. Action
+// 3. Puzzle
+// 5. Chill
+// 6. Skill
+// 7. Meme
+
+// Total maps in your selection: 1234
+// Your preferred map list has a chance to be used when deciding the next map.
+// Because you have 0 maps selected, other players will decide the next map.
+// Say '.cycle' for more info.
+
 // Use bucket folders to keep filesystem lookups fast.
 // For 50k unique players, 256 buckets would have 195 files each, on average
 // Make sure to keep this in sync with the db_setup.py script
@@ -9,12 +35,9 @@ const uint MAX_DB_BUCKETS = 256;
 
 dictionary g_player_map_history; // maps steam id to PlayerMapHistory
 dictionary g_active_players; // maps steam id to time they joined the map. used to track play time for the previous map
+array<SteamName> g_nextmap_players; // active players from the previous map that will decide the next map for the current map
 dictionary g_steam_id_names;
-
-// temp vars for loading all stats
-array<string> g_all_ids;
-bool g_stats_ready = false;
-uint g_load_idx = 0;
+bool g_anyone_joined = false; // used to prevent double-loaded maps from clearing active player list
 
 enum MAP_RATINGS {
 	RATE_NONE, // no preference or never played
@@ -47,6 +70,33 @@ class PlayerActivity {
 	PlayerActivity() {
 		firstActivity = 0;
 		lastActivity = g_Engine.time;
+	}
+}
+
+class SteamName {
+	string steamid;
+	string name;
+	
+	SteamName() {}
+	
+	SteamName(string steamid, string name) {
+		this.steamid = steamid;
+		this.name = name;
+	}
+}
+
+class LastPlay {
+	string steamid;
+	string name;
+	bool wasConsidered = false; // was considered for deciding the next map
+	int last_played = 0;
+	
+	LastPlay() {}
+	
+	LastPlay(string steamid, string name, bool wasConsidered) {
+		this.steamid = steamid;
+		this.name = name;
+		this.wasConsidered = wasConsidered;
 	}
 }
 
@@ -137,89 +187,179 @@ void loadPlayerMapStats(string steamid) {
 	}
 }
 
-void getMostPlayedMap(CBasePlayer@ plr) {
-	string steamid = getPlayerUniqueId(plr);
-	
-	PlayerMapHistory@ history = cast<PlayerMapHistory@>( g_player_map_history[steamid] );
-	if (history is null || !history.loaded) {
-		return;
+// find the map that has the highest minumum age across all players (age = time since last play)
+// example:
+// I played stadium4 1 hour ago, but no one else has ever played it. It will not be selected
+// because there are other maps which none of us have played in the last hour.
+// This also means that if you never played stadium4, you might have to play
+// a map that you did last week because someone else played stadium4 recently.
+string getMostFreshMap(array<SortableMap>@ maps) {	
+	if (g_nextmap_players.size() == 0) {
+		println("No players were active in the previous map. Next map will be randomly selected.");
+		return maps[Math.RandomLong(0, maps.size()-1)].map;
 	}
 	
-	string bestMap;
-	uint bestTotal = 0;
-	
-	array<array<HashMapEntryMapStat>>@ buckets = @history.stats.buckets;
-	for (uint i = 0; i < buckets.size(); i++) {
-		for (uint k = 0; k < buckets[i].size(); k++) {			
-			MapStat@ stat = buckets[i][k].value;
-		
-			if (stat.total_plays > bestTotal) {
-				bestTotal = stat.total_plays;
-				bestMap = buckets[i][k].key;
-			}
-		}
-	}
-	
-	g_PlayerFuncs.ClientPrintAll(HUD_PRINTCONSOLE, "Most played map: " + bestMap + " (" + bestTotal + " plays)\n");
-}
-
-// Maps that no one has played in a while are at the top. Overplayed maps at the bottom. Sorted by:
-// 1) time since it was last played by the players currently in the server
-// 2) total number of plays by each player in the server
-void sortMapsByFreshness(array<SortableMap>@ maps) {
-	
-	array<CBasePlayer@> players;
-	
-	println("Determining the best next map...");
+	array<uint64> hashKeys(maps.size());
 	
 	for (uint k = 0; k < maps.size(); k++) {
 		maps[k].sort = 0;
+		hashKeys[k] = hash_FNV1a(maps[k].map);
 	}
 	
-	for ( int i = 1; i <= g_Engine.maxClients; i++ )
-	{
-		CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
-		
-		if (plr is null or !plr.IsConnected()) {
-			continue;
-		}
-		
-		if (g_playerStates[i].afkTime != 0) { // don't cater to afk players
-			println("Skipping AFK player " + plr.pev.netname);
-			continue;
-		}
-		
-		string steamid = getPlayerUniqueId(plr);
+	for ( uint c = 0; c < g_nextmap_players.size(); c++ ) {
+		string steamid = g_nextmap_players[c].steamid;
 		
 		PlayerMapHistory@ history = cast<PlayerMapHistory@>(g_player_map_history[steamid]);
 		if (history is null) {
-			println("" + plr.pev.netname + " has no map history yet");
+			println(steamid + " has no map history yet");
 			continue;
-		}
+		}		
 		
 		for (uint k = 0; k < maps.size(); k++) {
-			MapStat@ stat = history.stats.get(maps[k].map);
-			
-			if (stat is null) {
-				continue;
-			}
-			
-			int diff = int(TimeDifference(DateTime(), DateTime(stat.last_played)).GetTimeDifference());
-			maps[k].sort += diff;
-			
-			if (stat.last_played == 0) {
-				println("" + plr.pev.netname + " has never played " + maps[k].map);
-			} else {
-				println("" + plr.pev.netname + " last played " + maps[k].map + " " + formatLastPlayedTime(diff) + " ago");
+			MapStat@ stat = history.stats.get(maps[k].map, hashKeys[k]);
+	
+			if (stat.last_played > maps[k].sort) {
+				maps[k].sort = stat.last_played;
 			}
 		}
 	}
 	
 	maps.sort(function(a,b) { return a.sort > b.sort; });
+	
+	return maps[maps.size()-1].map;
+}
+
+void showFreshMaps(CBasePlayer@ plr, CBasePlayer@ target, array<SortableMap>@ maps, bool reverse) {
+	const int limit = 20;
+
+	bool targetIsYou = plr.entindex() == target.entindex();
+	string name = targetIsYou ? "you" : string(target.pev.netname);
+
+	if (reverse) {
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n" + limit + " maps " + name + " played most recently\n\n");
+	} else {
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\n" + limit + " maps " + name + (targetIsYou ? " haven't" : " hasn't") + " played for the longest time\n\n");
+	}
+	
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Map name                        Last played\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "----------------------------------------------------------\n");
+
+	for (uint k = 0; k < maps.size(); k++) {
+		maps[k].sort = 0;
+	}
+	
+	string steamid = getPlayerUniqueId(target);
+	
+	PlayerMapHistory@ history = cast<PlayerMapHistory@>(g_player_map_history[steamid]);
+	if (history is null) {
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, (targetIsYou ? "You have" : name + " has") + " no map history yet\n");
+		return;
+	}		
+	
+	for (uint k = 0; k < maps.size(); k++) {
+		MapStat@ stat = history.stats.get(maps[k].map, maps[k].hashKey);
+		maps[k].sort = stat.last_played;
+	}
+	
+	if (reverse) {
+		maps.sort(function(a,b) { return a.sort > b.sort; });
+	} else {
+		maps.sort(function(a,b) { return a.sort < b.sort; });
+	}
+	
+	for (uint m = 0; m < limit; m++) {		
+		string map = maps[m].map;
+		
+		int padding = 32;
+		padding -= map.Length();
+		string spad = "";
+		for (int p = 0; p < padding; p++) spad += " ";
+		
+		int diff = int(TimeDifference(DateTime(), DateTime(maps[m].sort)).GetTimeDifference());	
+		string age = maps[m].sort == 0 ? "never" : formatLastPlayedTime(diff) + " ago";
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, map + spad + age + "\n");
+	}
+	
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "----------------------------------------------------------\n");
+}
+
+void showLastPlayedTimes(CBasePlayer@ plr, string mapname) {
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\nPrevious play times for \"" + mapname + "\"\n\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "     Player                          Last played\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "----------------------------------------------------------\n");
+	
+	array<LastPlay> allPlayers;
+	
+	for ( uint c = 0; c < g_nextmap_players.size(); c++ ) {
+		allPlayers.insertLast(LastPlay(g_nextmap_players[c].steamid, g_nextmap_players[c].name, true));
+	}
+	
+	for (int i = 1; i <= g_Engine.maxClients; i++) {
+		CBasePlayer@ p = g_PlayerFuncs.FindPlayerByIndex(i);
+		
+		if (p is null or !p.IsConnected()) {
+			continue;
+		}
+		
+		string steamid = getPlayerUniqueId(p);
+		
+		bool alreadyInList = false;
+		for (uint k = 0; k < allPlayers.size(); k++) {
+			if (allPlayers[k].steamid == steamid) {
+				alreadyInList = true;
+				break;
+			}
+		}
+		
+		if (!alreadyInList) {
+			allPlayers.insertLast(LastPlay(getPlayerUniqueId(p), p.pev.netname,  false));
+		}
+	}
+	
+	uint64 hashKey = hash_FNV1a(mapname);
+	
+	for ( uint c = 0; c < allPlayers.size(); c++ ) {
+		PlayerMapHistory@ history = cast<PlayerMapHistory@>(g_player_map_history[allPlayers[c].steamid]);
+		if (history is null) {
+			allPlayers[c].last_played = 0;
+		}	
+		
+		MapStat@ stat = history.stats.get(mapname, hashKey);
+		allPlayers[c].last_played = stat.last_played;
+	}
+	
+	allPlayers.sort(function(a,b) { return a.last_played < b.last_played; });
+	
+	for ( uint c = 0; c < allPlayers.size(); c++ ) {
+		string steamid = allPlayers[c].steamid;
+		string name = allPlayers[c].name;
+		
+		string prefix = allPlayers[c].wasConsidered ? " [x] " : " [ ] ";
+		
+		int padding = 32;
+		padding -= name.Length();
+		string spad = "";
+		for (int p = 0; p < padding; p++) spad += " ";
+		
+		int diff = int(TimeDifference(DateTime(), DateTime(allPlayers[c].last_played)).GetTimeDifference());
+		if (allPlayers[c].last_played == 0) {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, prefix + name + spad + " never\n");
+		} else {
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, prefix + name + spad + formatLastPlayedTime(diff) + " ago\n");
+		}
+	}	
+	
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "----------------------------------------------------------\n\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Previous play times are used to pick \"Next maps\" that have the highest minimum age.\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Players without [x] next to their name were not considered when deciding the current \"Next Map\".\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "This is because they weren't active long enough in the previous map (AFK or joined late).\n\n");
+	
 }
 
 // logic here should be kept in sync with db_setup.py
 void updatePlayerStats() {
+	g_nextmap_players.resize(0);
+
 	array<string>@ idKeys = g_active_players.getKeys();	
 	for (uint i = 0; i < idKeys.length(); i++) {
 		string steamid = idKeys[i];
@@ -237,9 +377,11 @@ void updatePlayerStats() {
 		float percentActive = activeTime / levelTime;
 		bool wasActiveEnough = percentActive >= 0.5f || activeTime > levelTime;
 		
-		println("" + plr.pev.netname + " activity percent: " + percentActive*100 + " (" + activity.firstActivity + " to " + activity.lastActivity + ")");
+		//println("" + plr.pev.netname + " activity percent: " + percentActive*100 + " (" + activity.firstActivity + " to " + activity.lastActivity + ")");
 		
 		if (wasActiveEnough) {
+			g_nextmap_players.insertLast(SteamName(steamid, plr.pev.netname));
+			
 			PlayerMapHistory@ history = cast<PlayerMapHistory@>(g_player_map_history[steamid]);
 			
 			if (!history.loaded) { 
@@ -256,37 +398,16 @@ void updatePlayerStats() {
 	}
 }
 
-void writeMapStats() {
-	if (g_steam_id_names.size() == 0) {
-		println("Can't write stats yet. Loading not finished");
-		return;
-	}
-	
-	updatePlayerStats();
-	writeActivePlayerStats();
-	
-	string path = ROOT_DB_PATH + "/steam_ids_test.txt";
-	File@ f = g_FileSystem.OpenFile( path, OpenFile::WRITE);
-
-	if (!f.IsOpen()) {
-		println("Failed to steam id name file: " + path + "\n");
-		return;
-	}
-	
-	array<string>@ idKeys = g_steam_id_names.getKeys();	
-	for (uint i = 0; i < idKeys.length(); i++)
-	{
-		string name;
-		g_steam_id_names.get(idKeys[i], name);
-		f.Write(idKeys[i].Replace("STEAM_0:", "") + "\\" + name + "\n");
-	}
-	
-	f.Close();
-
-	println("Wrote steam id name mapping");
-}	
-
 void writeActivePlayerStats() {
+	if (!g_anyone_joined) {
+		// map was probably double-loaded. Re-use the previous map choice.
+		return;
+	}
+	
+	print("Updating player map stats...");
+
+	updatePlayerStats();
+
 	array<string>@ idKeys = g_active_players.getKeys();	
 	for (uint m = 0; m < idKeys.length(); m++) {
 		string steamid = idKeys[m];
@@ -298,7 +419,7 @@ void writeActivePlayerStats() {
 			continue;
 		}
 		
-		string path = getPlayerDbPath(steamid) + ".new";
+		string path = getPlayerDbPath(steamid);
 		File@ f = g_FileSystem.OpenFile(path, OpenFile::WRITE);
 
 		if (!f.IsOpen()) {
@@ -316,8 +437,10 @@ void writeActivePlayerStats() {
 		}
 		
 		f.Close();
-		println("Wrote player stat file: " + path);
+		//println("Wrote player stat file: " + path);
 	}
+	
+	println("DONE");
 }
 
 string formatLastPlayedTime(int seconds) {
@@ -333,24 +456,24 @@ string formatLastPlayedTime(int seconds) {
 		if (months >= 6) {
 			years += 1;
 		}
-		return "" + years + " years";
+		return "" + years + " year" + (years != 1 ? "s" : "");
 	} else if (months > 0) {
 		if (days >= daysPerMonth/2) {
 			months += 1;
 		}
-		return "" + months + " months";
+		return "" + months + " month" + (months != 1 ? "s" : "");
 	} else if (days > 0) {
 		if (hours >= 12) {
 			days += 1;
 		}
-		return "" + days + " days";
+		return "" + days + " day" + (days != 1 ? "s" : "");
 	} else if (hours > 0) {
 		if (minutes >= 30) {
 			hours += 1;
 		}
-		return "" + hours + " hours";
+		return "" + hours + " hour" + (hours != 1 ? "s" : "");
 	} else {
-		return "" + minutes + " minutes";
+		return "" + minutes + " minute" + (minutes != 1 ? "s" : "");
 	}
 }
 

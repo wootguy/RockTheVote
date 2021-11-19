@@ -4,7 +4,7 @@ string g_lastVoteStarter; // used to prevent a single player from spamming votes
 
 const int VOTE_FAILS_UNTIL_BAN = 2; // if a player keeps starting votes that fail, they're banned from starting more votes
 const int VOTE_FAIL_IGNORE_TIME = 60; // number of minutes to remember failed votes
-const int VOTING_BAN_DURATION = 24*60; // number of minutes a ban lasts (banned from starting votes, not from the server)
+const int VOTING_BAN_DURATION = 4*60; // number of minutes a ban lasts (banned from starting votes, not from the server)
 const int GLOBAL_VOTE_COOLDOWN = 5; // just enough time to read results of the previous vote.
 const int RESTART_MAP_PERCENT_REQ = 75;
 const int SEMI_SURVIVAL_PERCENT_REQ = 67;
@@ -235,7 +235,7 @@ void semiSurvivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ ch
 		}
 	}
 	else {
-		int required = int(g_EngineFuncs.CVarGetFloat("mp_votesurvivalmoderequired"));
+		int required = SEMI_SURVIVAL_PERCENT_REQ;
 		int got = voteMenu.getOptionVotePercent("Yes");
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to toggle semi-survival mode failed " + yesVoteFailStr(got, required) + ".\n");
 		voterState.handleVoteFail();

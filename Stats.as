@@ -232,11 +232,11 @@ uint insertSort(array<SortableMap>@ a, uint i) {
 	return i;
 }
 
-void insertion_sort_step(array<SortableMap>@ a, uint i, int steps, void_callback@ callback) {
+void insertion_sort_step(array<SortableMap>@ a, uint i, void_callback@ callback) {
 	i = insertSort(a, i);
 	
 	if (i < a.size()-1) {
-		g_Scheduler.SetTimeout("insertion_sort_step", 0.0f, @a, i, steps+1, @callback);
+		g_Scheduler.SetTimeout("insertion_sort_step", 0.0f, @a, i, @callback);
 	} else {
 		callback();
 	}
@@ -279,12 +279,12 @@ void sortMapsByFreshness(array<SortableMap>@ maps, array<SteamName>@ activePlaye
 		}
 	}
 	
-	insertion_sort_step(maps, 0, 1, callback);
+	insertion_sort_step(maps, 0, callback);
 }
 
 void showFreshMaps(EHandle h_plr, EHandle h_target, array<SortableMap>@ maps, bool reverse) {
 	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
-	if (plr is null) {
+	if (plr is null || g_generating_rtv_list) {
 		return;
 	}
 	
@@ -319,10 +319,7 @@ void showFreshMaps(EHandle h_plr, EHandle h_target, array<SortableMap>@ maps, bo
 	}
 	
 	if (target is null) {
-		sortMapsByFreshness(maps, getAllPlayers(), function() {
-			// can't access scoped vars from anan funcs so need to use globals..
-			showFreshMaps_afterSort();
-		});
+		sortMapsByFreshness(maps, getAllPlayers(), showFreshMaps_afterSort);
 	}
 	else {
 		string steamid = getPlayerUniqueId(target);
@@ -338,9 +335,7 @@ void showFreshMaps(EHandle h_plr, EHandle h_target, array<SortableMap>@ maps, bo
 			maps[k].sort = stat.last_played;
 		}
 		
-		insertion_sort_step(maps, 0, 1, function() {
-			showFreshMaps_afterSort();
-		});
+		insertion_sort_step(maps, 0, showFreshMaps_afterSort);
 	}
 }
 

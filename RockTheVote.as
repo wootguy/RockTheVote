@@ -20,6 +20,12 @@ class SortableMap {
 	
 	SortableMap() {}
 	
+	SortableMap(SortableMap@ other) {
+		map = other.map;
+		hashKey = other.hashKey;
+		sort = other.sort;
+	}
+	
 	SortableMap(string map) {
 		this.map = map;
 		hashKey = hash_FNV1a(map);
@@ -62,7 +68,7 @@ array<string> g_previousMaps;
 
 array<RtvState> g_playerStates;
 array<SortableMap> g_everyMap; // sorted combination of normal and hidden maps
-array<string> g_randomRtvChoices; // normal votable maps which aren't in the previous map list
+array<SortableMap> g_randomRtvChoices; // normal votable maps which aren't in the previous map list
 array<SortableMap> g_randomCycleMaps; // map cycle maps which aren't in the previous map list
 array<string> g_nomList; // maps nominated by players
 dictionary g_prevMapPosition; // maps a map name to its position in the previous map list (for faster nom menus)
@@ -70,6 +76,7 @@ dictionary g_memeMapsHashed; // for faster meme map checks
 MenuVote::MenuVote g_rtvVote;
 uint g_maxNomMapNameLength = 0; // used for even spacing in the full console map list
 CScheduledFunction@ g_timer = null;
+bool g_generating_rtv_list = false; // true while maps are being sorted for rtv menu
 
 const float levelChangeDelay = 5.0f; // time in seconds intermission is shown for game_end
 
@@ -114,16 +121,13 @@ void MapInit() {
 	
 	reset();
 	
-	string randomMap = getMostFreshMap(g_randomCycleMaps); // something most haven't played in the longest time
-	
-	println("[RTV] Most fresh next map: " + randomMap);
-	g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + randomMap + "\n");
+	setFreshMapAsNextMap(g_randomCycleMaps); // something most haven't played in the longest time
 }
 
 HookReturnCode MapChange() {
 	writePreviousMapsList();
 	writeActivePlayerStats();
-	g_active_players.clear();
+	g_player_activity.clear();
 	g_Scheduler.RemoveTimer(g_timer);	
 	return HOOK_CONTINUE;
 }
@@ -138,6 +142,7 @@ void reset() {
 	g_gameVote.reset();
 	g_lastGameVote = 0;
 	g_anyone_joined = false;
+	g_generating_rtv_list = false;
 }
 
 void loadCrossPluginAfkState() {
@@ -249,43 +254,38 @@ int getRequiredRtvCount(bool excludeAfks=true) {
 bool canAutoStartRtv() {
 	if (g_rtvVote.status == MVOTE_NOT_STARTED && g_Engine.time > g_SecondsUntilVote.GetInt()) {
 		if (getCurrentRtvCount() >= getRequiredRtvCount() and getCurrentRtvCount() > 0) {
-			return true;
+			return !g_generating_rtv_list;
 		}
 	}
 	
 	return false;
 }
 
-array<string> generateRtvList() {
+funcdef void void_callback();
+
+void createRtvMenu() {
 	array<string> rtvList;
+	if (!g_generating_rtv_list) {
+		return; // game_end interrupted sort
+	}
+	g_generating_rtv_list = false;
 	
 	for (uint i = 0; i < g_nomList.size(); i++) {
 		rtvList.insertLast(g_nomList[i]);
 	}
 	
-	if (g_randomRtvChoices.size() == 0) {
-		g_Log.PrintF("[RTV] All maps are excluded by the previous map list! Make sure g_ExcludePrevMaps value is less than the total nommable maps.\n");
-		return rtvList;
-	}
-	
-	for (int failsafe = 0; failsafe < 1000; failsafe++) {	
+	for (uint failsafe = 0; failsafe < g_randomRtvChoices.size(); failsafe++) {	
 		if (int(rtvList.size()) >= g_MaxMapsToVote.GetInt() or int(rtvList.size()) >= 8) {
 			break;
 		}
 		
-		string randomMap = g_randomRtvChoices[Math.RandomLong(0, g_randomRtvChoices.size()-1)];
+		string randomMap = g_randomRtvChoices[failsafe].map;
 		
 		if (rtvList.find(randomMap) == -1 && g_EngineFuncs.IsMapValid(randomMap)) {
 			rtvList.insertLast(randomMap);
 		}
 	}
 	
-	return rtvList;
-}
-
-void startVote(string reason="") {
-	array<string> rtvList = generateRtvList();
-
 	array<MenuOption> menuOptions;
 	
 	menuOptions.insertLast(MenuOption("\\d(exit)"));
@@ -305,7 +305,19 @@ void startVote(string reason="") {
 	@voteParams.finishCallback = @voteFinishCallback;
 	
 	g_rtvVote.start(voteParams, null);
-	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] Vote started! " + reason + "\n");
+}
+
+void startVote(string reason="") {
+	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] Vote starting! " + reason + "\n");
+	
+	if (g_randomRtvChoices.size() == 0) {
+		g_Log.PrintF("[RTV] All maps are excluded by the previous map list! Make sure g_ExcludePrevMaps value is less than the total nommable maps.\n");
+		createRtvMenu();
+		return;
+	}
+	
+	g_generating_rtv_list = true;
+	sortMapsByFreshness(g_randomRtvChoices, getActivePlayers(), function() { createRtvMenu(); });
 }
 
 void voteThinkCallback(MenuVote::MenuVote@ voteMenu, int secondsLeft) {
@@ -366,7 +378,7 @@ int tryRtv(CBasePlayer@ plr) {
 		return 1;
 	}
 	
-	if (g_rtvVote.status == MVOTE_IN_PROGRESS) {
+	if (g_rtvVote.status == MVOTE_IN_PROGRESS || g_generating_rtv_list) {
 		g_rtvVote.reopen(plr);
 		return 2;
 	}
@@ -729,7 +741,7 @@ void loadAllMapLists() {
 			g_maxNomMapNameLength = g_normalMaps[i].Length();
 		}
 		if (!g_prevMapPosition.exists(g_normalMaps[i]) and g_normalMaps[i] != g_Engine.mapname) {
-			g_randomRtvChoices.insertLast(g_normalMaps[i]);
+			g_randomRtvChoices.insertLast(SortableMap(g_normalMaps[i]));
 		}
 	}
 	
@@ -796,8 +808,7 @@ bool rejectNonAdmin(CBasePlayer@ plr) {
 }
 
 // find a player by name or partial name
-CBasePlayer@ getPlayerByName(CBasePlayer@ caller, string name)
-{
+CBasePlayer@ getPlayerByName(CBasePlayer@ caller, string name) {
 	name = name.ToLowercase();
 	int partialMatches = 0;
 	CBasePlayer@ partialMatch;
@@ -834,20 +845,21 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	
 	if (args.ArgC() >= 1)
 	{
-		if (args[0] == ".recentmaps") {
-			CBasePlayer@ target = args[1].Length() > 0 ? getPlayerByName(plr, args[1]) : plr;
-			if (target !is null)
-				showFreshMaps(plr, target, g_everyMap, true);
-			return 2;
-		}
-		else if (args[0] == ".newmaps") {
-			CBasePlayer@ target = args[1].Length() > 0 ? getPlayerByName(plr, args[1]) : plr;
-			if (target !is null)
-				showFreshMaps(plr, target, g_everyMap, false);
+		if (args[0] == ".newmaps" || args[0] == ".recentmaps") {
+			bool reverse = args[0] == ".recentmaps";
+
+			if (args[1].ToLowercase() == "\\all") {
+				showFreshMaps(EHandle(plr), EHandle(null), g_everyMap, reverse);
+			} else {
+				CBasePlayer@ target = args[1].Length() > 0 ? getPlayerByName(plr, args[1]) : plr;
+				if (target !is null)
+					showFreshMaps(EHandle(plr), target, g_everyMap, reverse);
+			}
+				
 			return 2;
 		}
 		else if (args[0] == ".lastplays") {
-			showLastPlayedTimes(plr, args.ArgC() == 1 ? string(g_Engine.mapname) : args[1]);
+			showLastPlayedTimes(plr, args.ArgC() == 1 ? string(g_Engine.mapname) : args[1].ToLowercase());
 			return 2;
 		}
 		else if (args[0] == "rtv" and args.ArgC() == 1) {
@@ -860,7 +872,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		}
 		else if (args[0] == "unnom" || args[0] == "unom" || args[0] == "denom") {
 			RtvState@ state = g_playerStates[plr.entindex()];
-			if (g_rtvVote.status != MVOTE_NOT_STARTED) {
+			if (g_rtvVote.status != MVOTE_NOT_STARTED || g_generating_rtv_list) {
 				g_PlayerFuncs.SayText(plr, "[RTV] Too late for that now!\n");
 			}
 			else if (state.nom.Length() > 0) {
@@ -938,6 +950,8 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			game_end(nextmap);
 			
 			g_PlayerFuncs.SayTextAll(plr, "" + plr.pev.netname + " changed map to: " + nextmap + "\n");
+			
+			return 2;
 		}
 		else if (args[0] == ".set_nextmap") {
 			if (rejectNonAdmin(plr)) {
@@ -986,11 +1000,11 @@ HookReturnCode ClientJoin( CBasePlayer@ plr ) {
 	string steamid = getPlayerUniqueId(plr);
 	loadPlayerMapStats(steamid);
 	
-	if (g_active_players.exists(steamid)) {
-		PlayerActivity@ activity = cast<PlayerActivity@>(g_active_players[steamid]);
+	if (g_player_activity.exists(steamid)) {
+		PlayerActivity@ activity = cast<PlayerActivity@>(g_player_activity[steamid]);
 		activity.lastActivity = g_Engine.time;
 	} else {
-		g_active_players[steamid] = PlayerActivity();
+		g_player_activity[steamid] = PlayerActivity();
 	}
 	
 	g_anyone_joined = true;
@@ -1010,8 +1024,8 @@ HookReturnCode ClientLeave(CBasePlayer@ plr) {
 		state.nom = "";
 	}
 	
-	if (g_active_players.exists(steamid)) {
-		PlayerActivity@ activity = cast<PlayerActivity@>(g_active_players[steamid]);
+	if (g_player_activity.exists(steamid)) {
+		PlayerActivity@ activity = cast<PlayerActivity@>(g_player_activity[steamid]);
 		activity.lastActivity = g_Engine.time;		
 	}
 	

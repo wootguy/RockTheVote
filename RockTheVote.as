@@ -40,6 +40,7 @@ CClientCommand set_nextmap("set_nextmap", "Set the next map cycle", @consoleCmd)
 CClientCommand map("map", "Force a map change", @consoleCmd);
 CClientCommand vote("vote", "Start a vote or reopen the vote menu", @consoleCmd);
 CClientCommand poll("poll", "Start a custom poll", @consoleCmd);
+CClientCommand lastplay("lastplay", "Show previous play times for a map", @consoleCmd);
 CClientCommand lastplays("lastplays", "Show previous play times for a map", @consoleCmd);
 CClientCommand recentmaps("recentmaps", "Show recently played maps", @consoleCmd);
 CClientCommand newmaps("newmaps", "Show maps that haven't been played for the longest time", @consoleCmd);
@@ -128,7 +129,7 @@ HookReturnCode MapChange() {
 	writePreviousMapsList();
 	writeActivePlayerStats();
 	g_player_activity.clear();
-	g_Scheduler.RemoveTimer(g_timer);	
+	g_Scheduler.RemoveTimer(g_timer);
 	return HOOK_CONTINUE;
 }
 
@@ -858,7 +859,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 				
 			return 2;
 		}
-		else if (args[0] == ".lastplays") {
+		else if (args[0] == ".lastplay" || args[0] == ".lastplays") {
 			showLastPlayedTimes(plr, args.ArgC() == 1 ? string(g_Engine.mapname) : args[1].ToLowercase());
 			return 2;
 		}

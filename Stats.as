@@ -33,9 +33,11 @@ const string ROOT_DB_PATH = "scripts/plugins/store/rtv/";
 // Make sure to keep this in sync with the db_setup.py script
 const uint MAX_DB_BUCKETS = 256;
 const int FRESH_MAP_LIMIT = 20;
+const float MIN_ACTIVE_TIME = 0.5f;
 
 dictionary g_player_map_history; // maps steam id to PlayerMapHistory
 dictionary g_player_activity; // maps steam id to time they joined the map. used to track play time for the previous map
+dictionary g_prev_map_activity; // maps steam id to percentage active time in previous map
 array<SteamName> g_nextmap_players; // active players from the previous map that will decide the next map for the current map
 bool g_anyone_joined = false; // used to prevent double-loaded maps from clearing active player list
 
@@ -44,6 +46,7 @@ EHandle g_maplist_viewer; // used to prevent multiple players sorting
 string g_maplist_header;
 array<SortableMap>@ g_maplist_maps;
 bool g_maplist_reverse;
+string g_previous_map = "";
 
 enum MAP_RATINGS {
 	RATE_NONE, // no preference or never played
@@ -96,6 +99,7 @@ class LastPlay {
 	string name;
 	bool wasConsidered = false; // was considered for deciding the next map
 	int last_played = 0;
+	int previousPlayPercent;
 	
 	LastPlay() {}
 	
@@ -103,6 +107,10 @@ class LastPlay {
 		this.steamid = steamid;
 		this.name = name;
 		this.wasConsidered = wasConsidered;
+		
+		if (g_prev_map_activity.exists(steamid)) {
+			g_prev_map_activity.get(steamid, previousPlayPercent);
+		}
 	}
 }
 
@@ -371,8 +379,8 @@ void showFreshMaps_afterSort() {
 
 void showLastPlayedTimes(CBasePlayer@ plr, string mapname) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\nPrevious play times for \"" + mapname + "\"\n\n");
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "     Player                          Last played\n");
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "----------------------------------------------------------\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Player                          Last played      Previous activity\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "------------------------------------------------------------------\n");
 	
 	array<LastPlay> allPlayers;
 	
@@ -420,31 +428,46 @@ void showLastPlayedTimes(CBasePlayer@ plr, string mapname) {
 		string steamid = allPlayers[c].steamid;
 		string name = allPlayers[c].name;
 		
-		string prefix = allPlayers[c].wasConsidered ? " [x] " : " [ ] ";
+		string prefix = allPlayers[c].wasConsidered ? "[x] " : "[ ] ";
 		
-		int padding = 32;
-		padding -= name.Length();
-		string spad = "";
-		for (int p = 0; p < padding; p++) spad += " ";
+		int prc = allPlayers[c].previousPlayPercent;
+		string prevPlay = "" + prc + "%%";
+		if (prc < 100) prevPlay = " " + prevPlay;
+		if (prc < 10) prevPlay = " " + prevPlay;
+		prevPlay = prefix + prevPlay;
+		
+		{
+			int padding = 32;
+			padding -= name.Length();
+			string spad = "";
+			for (int p = 0; p < padding; p++) spad += " ";
+			name += spad;
+		}
 		
 		int diff = int(TimeDifference(DateTime(), DateTime(allPlayers[c].last_played)).GetTimeDifference());
-		if (allPlayers[c].last_played == 0) {
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, prefix + name + spad + " never\n");
-		} else {
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, prefix + name + spad + formatLastPlayedTime(diff) + " ago\n");
+		string age = allPlayers[c].last_played == 0 ? "never" : formatLastPlayedTime(diff) + " ago";
+		
+		{
+			int padding = 17;
+			padding -= age.Length();
+			string spad = "";
+			for (int p = 0; p < padding; p++) spad += " ";
+			age += spad;
 		}
+		
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, name + age + prevPlay + "\n");
 	}	
 	
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "----------------------------------------------------------\n\n");
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Previous play times are used to pick \"Next maps\" that have the highest minimum age.\n");
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Players without [x] next to their name were not considered when deciding the current \"Next Map\".\n");
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "This is because they weren't active long enough in the previous map (AFK or joined late).\n\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "------------------------------------------------------------------\n\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Previous play times are used to pick \"Next maps\" that have the highest minimum age.\n\n");
 	
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\"Previous activity\" shows the percentage of activity in the previous map (" + g_previous_map + ").\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Players with an [x] were considered when deciding the current \"Next Map\".\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "" + int(MIN_ACTIVE_TIME*100) + "%% is the minimum to be considered for map selection.\n\n");
 }
 
 // players who have been at least 50% active up until the current time
 array<SteamName> getActivePlayers() {
-	const float minActiveTime = 0.5f;
 	array<SteamName> activePlayers;
 	
 	array<string>@ idKeys = g_player_activity.getKeys();	
@@ -462,7 +485,13 @@ array<SteamName> getActivePlayers() {
 		float levelTime = g_Engine.time - 60; // substract some time for loading/downloading
 		float activeTime = activity.lastActivity - activity.firstActivity;
 		float percentActive = activeTime / levelTime;
-		bool wasActiveEnough = percentActive >= minActiveTime || activeTime > levelTime;
+		
+		if (activeTime > levelTime || percentActive > 1.0f) {
+			percentActive = 1.0f;
+		}
+		
+		bool wasActiveEnough = percentActive >= MIN_ACTIVE_TIME;
+		g_prev_map_activity[steamid] = int(percentActive*100);
 		
 		if (wasActiveEnough) {
 			activePlayers.insertLast(SteamName(steamid, plr.pev.netname));
@@ -517,6 +546,9 @@ void writeActivePlayerStats() {
 	
 	print("Updating player map stats...");
 
+	g_prev_map_activity.clear();
+
+	g_previous_map = g_Engine.mapname;
 	updatePlayerStats();
 
 	array<string>@ idKeys = g_player_activity.getKeys();	

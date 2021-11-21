@@ -4,6 +4,8 @@
 #include "HashMap"
 
 // TODO:
+// - play 50% of a series for it to count as a play, not just a sinle map
+// - configurable min active time and min series map plays
 // - reopen menu should close again or not show messsage
 
 class RtvState {
@@ -60,12 +62,17 @@ array<string> g_normalMaps;
 const string hiddenMapsFile = "scripts/plugins/cfg/hidden_nom_maps.txt";
 array<string> g_hiddenMaps;
 
+// maps that are split into multiple bsp files
+const string seriesMapsFile = "scripts/plugins/RockTheVote/series_maps.txt";
+dictionary g_seriesMaps; // maps a votable map to a list of maps
+
 array<RtvState> g_playerStates;
 array<SortableMap> g_everyMap; // sorted combination of normal and hidden maps
 array<SortableMap> g_randomRtvChoices; // normal votable maps (all maps besides the meme ones)
 array<SortableMap> g_randomCycleMaps; // map cycle maps (only the "good" maps)
 array<string> g_nomList; // maps nominated by players
 dictionary g_memeMapsHashed; // for faster meme map checks
+dictionary g_everyMapHashed; // for faster votable map checks
 MenuVote::MenuVote g_rtvVote;
 uint g_maxNomMapNameLength = 0; // used for even spacing in the full console map list
 CScheduledFunction@ g_timer = null;
@@ -89,7 +96,7 @@ void PluginInit() {
 	@g_MaxMapsToVote = CCVar("iMaxMaps", 6, "How many maps can players nominate and vote for later", ConCommandFlag::AdminOnly);
 	@g_VotingPeriodTime = CCVar("secondsToVote", 25, "How long can players vote for a map before a map is chosen", ConCommandFlag::AdminOnly);
 	@g_PercentageRequired = CCVar("iPercentReq", 66, "0-100, percent of players required to RTV before voting happens", ConCommandFlag::AdminOnly);
-	@g_NormalMapCooldown = CCVar("NormalMapCooldown", 24*30, "Time in hours before a map can be nommed again", ConCommandFlag::AdminOnly);
+	@g_NormalMapCooldown = CCVar("NormalMapCooldown", 24, "Time in hours before a map can be nommed again", ConCommandFlag::AdminOnly);
 	@g_MemeMapCooldown = CCVar("MemeMapCooldown", 24*30, "Time in hours before a meme map can be nommed again", ConCommandFlag::AdminOnly);
 	@g_EnableGameVotes = CCVar("gameVotes", 1, "Text menu replacements for the default game votes", ConCommandFlag::AdminOnly);
 	@g_EnableForceSurvivalVotes = CCVar("forceSurvivalVotes", 0, "Enable semi-survival vote (requires ForceSurvival plugin)", ConCommandFlag::AdminOnly);
@@ -450,7 +457,8 @@ bool isMapExcluded(string mapname, array<SteamName> activePlayers, CBasePlayer@ 
 	
 	if (recentCount > 0) {
 		string splr = recentCount == 1 ?  recentName : "" + recentCount + " people here";
-		g_PlayerFuncs.SayText(plr, "[RTV] Can't nom \"" + mapname + "\" yet. " + splr + " played that less than " + formatLastPlayedTime(cooldown) + " ago.\n");
+		string smap = g_seriesMaps.exists(mapname) ? "that map series" : "that map";
+		g_PlayerFuncs.SayText(plr, "[RTV] Can't nom \"" + mapname + "\" yet. " + splr + " played " + smap + " less than " + formatLastPlayedTime(cooldown) + " ago.\n");
 	}
 	
 	return recentCount > 0;
@@ -691,11 +699,54 @@ array<string> loadMapList(string path, bool ignoreDuplicates=false) {
 	return maplist;
 }
 
+void loadSeriesMaps() {
+	g_seriesMaps.clear();
+	
+	File@ file = g_FileSystem.OpenFile(seriesMapsFile, OpenFile::READ);
+
+	dictionary unique;
+
+	if (file !is null && file.IsOpen()) {
+		while (!file.EOFReached()) {
+			string line;
+			file.ReadLine(line);
+			line.Trim();
+			
+			int commentIdx = line.Find("//");
+			if (commentIdx != -1) {
+				line = line.SubString(0, commentIdx);
+				line.Trim();
+			}
+
+			if (line.IsEmpty())
+				continue;
+
+			array<string> maps = line.Split(" ");
+			array<SortableMap> sortableMaps;
+
+			for (uint i = 0; i < maps.size(); i++) {
+				sortableMaps.insertLast(SortableMap(maps[i]));
+			}
+
+			for (uint i = 0; i < maps.size(); i++) {
+				if (g_everyMapHashed.exists(maps[i])) {
+					g_seriesMaps[maps[i]] = sortableMaps;
+				}
+			}
+		}
+
+		file.Close();
+	} else {
+		g_Log.PrintF("[RTV] map list file not found: " + seriesMapsFile + "\n");
+	}
+}
+
 void loadAllMapLists() {
 	g_normalMaps = loadMapList(votelistFile);
 	g_hiddenMaps = loadMapList(hiddenMapsFile);
 	
 	g_memeMapsHashed.clear();
+	g_everyMapHashed.clear();
 	
 	g_everyMap.resize(0);
 	g_randomRtvChoices.resize(0);
@@ -703,6 +754,7 @@ void loadAllMapLists() {
 	
 	for (uint i = 0; i < g_hiddenMaps.size(); i++) {
 		g_everyMap.insertLast(SortableMap(g_hiddenMaps[i]));
+		g_everyMapHashed[g_hiddenMaps[i]] = true;
 		g_memeMapsHashed[g_hiddenMaps[i]] = true;
 		
 		if (g_hiddenMaps[i].Length() > g_maxNomMapNameLength) {
@@ -717,6 +769,7 @@ void loadAllMapLists() {
 		}
 	
 		g_everyMap.insertLast(SortableMap(g_normalMaps[i]));
+		g_everyMapHashed[g_normalMaps[i]] = true;
 		
 		if (g_normalMaps[i].Length() > g_maxNomMapNameLength) {
 			g_maxNomMapNameLength = g_normalMaps[i].Length();
@@ -731,7 +784,12 @@ void loadAllMapLists() {
 		if (mapCycleMaps[i] != g_Engine.mapname) {
 			g_randomCycleMaps.insertLast(SortableMap(mapCycleMaps[i]));
 		}
+		if (!g_everyMapHashed.exists(mapCycleMaps[i])) {
+			g_Log.PrintF("[RTV] Map \"" + mapCycleMaps[i] + "\" should also be in mapvote.cfg if it's good enough to be in map cycle.\n");
+		}
 	}
+	
+	loadSeriesMaps();
 
 	g_everyMap.sort(function(a,b) { return a.map.Compare(b.map) < 0; });
 }

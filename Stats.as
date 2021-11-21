@@ -40,13 +40,7 @@ dictionary g_player_activity; // maps steam id to time they joined the map. used
 dictionary g_prev_map_activity; // maps steam id to percentage active time in previous map
 array<SteamName> g_nextmap_players; // active players from the previous map that will decide the next map for the current map
 bool g_anyone_joined = false; // used to prevent double-loaded maps from clearing active player list
-
-// temp vars used while processing a map list to send to a player
-EHandle g_maplist_viewer; // used to prevent multiple players sorting
-string g_maplist_header;
-array<SortableMap>@ g_maplist_maps;
-bool g_maplist_reverse;
-string g_previous_map = "";
+string g_previous_map = ""; // last map which ran the map selection logic
 
 enum MAP_RATINGS {
 	RATE_NONE, // no preference or never played
@@ -228,10 +222,10 @@ void setFreshMapAsNextMap(array<SortableMap>@ maps) {
 		return;
 	}
 	
-	sortMapsByFreshness(maps, g_nextmap_players, setNextMap);
+	sortMapsByFreshness(maps, g_nextmap_players, setNextMap, {});
 }
 
-void setNextMap() {
+void setNextMap(dictionary args) {
 	string nextmap = g_randomCycleMaps[0].map;
 	println("[RTV] Most fresh next map: " + nextmap);
 	g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + nextmap + "\n");
@@ -253,13 +247,13 @@ uint insertSort(array<SortableMap>@ a, uint i) {
 	return i;
 }
 
-void insertion_sort_step(array<SortableMap>@ a, uint i, void_callback@ callback) {
+void insertion_sort_step(array<SortableMap>@ a, uint i, dict_callback@ callback, dictionary callbackArgs) {
 	i = insertSort(a, i);
 	
 	if (i < a.size()) {
-		g_Scheduler.SetTimeout("insertion_sort_step", 0.0f, @a, i, @callback);
+		g_Scheduler.SetTimeout("insertion_sort_step", 0.0f, @a, i, callback, callbackArgs);
 	} else {
-		callback();
+		callback(callbackArgs);
 	}
 }
 
@@ -273,7 +267,7 @@ void shuffle(array<SortableMap>@ arr) {
 }
 
 // sorts according to minimum play time of all players in the server
-void sortMapsByFreshness(array<SortableMap>@ maps, array<SteamName>@ activePlayers, void_callback@ callback) {
+void sortMapsByFreshness(array<SortableMap>@ maps, array<SteamName>@ activePlayers, dict_callback@ callback, dictionary callbackArgs) {
 	if (activePlayers.size() == 0) {
 		return;
 	}
@@ -300,7 +294,18 @@ void sortMapsByFreshness(array<SortableMap>@ maps, array<SteamName>@ activePlaye
 		}
 	}
 	
-	insertion_sort_step(maps, 1, callback);
+	insertion_sort_step(maps, 1, callback, callbackArgs);
+}
+
+// used to prevent parallel sorts messing up the global map lists
+array<SortableMap> copyArray(array<SortableMap>@ arr) {
+	array<SortableMap> newArr;
+	
+	for (uint i = 0; i < arr.size(); i++) {
+		newArr.insertLast(SortableMap(arr[i]));
+	}
+	
+	return newArr;
 }
 
 void showFreshMaps(EHandle h_plr, int targetType, string targetName, string targetId, array<SortableMap>@ maps, bool reverse) {
@@ -309,32 +314,25 @@ void showFreshMaps(EHandle h_plr, int targetType, string targetName, string targ
 		return;
 	}
 	
-	if (g_maplist_viewer.IsValid() && g_maplist_viewer.GetEntity().entindex() == plr.entindex()) {
-		return; // single player spamming command
-	}
-	
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Processing map list...\n");
 	
-	if (g_maplist_viewer.IsValid()) {
-		g_Scheduler.SetTimeout("showFreshMaps", 0.5f, h_plr, targetType, targetName, targetId, maps, reverse);
-		return; // wait for other player to get their results
-	}
-	
-	// lock in new globals
-	g_maplist_viewer = h_plr;
-	@g_maplist_maps = @maps;
-	g_maplist_reverse = reverse;
-	
-	g_maplist_header = "";
+	string header = "";
 
 	if (!reverse) {
-		g_maplist_header = "\n" + FRESH_MAP_LIMIT + " maps " + targetName + " played most recently\n\n";
+		header = "\n" + FRESH_MAP_LIMIT + " maps " + targetName + " played most recently\n\n";
 	} else {
-		g_maplist_header = "\n" + FRESH_MAP_LIMIT + " maps " + targetName + (targetType == TARGET_SELF ? " haven't" : " hasn't") + " played in a long time\n\n";
+		header = "\n" + FRESH_MAP_LIMIT + " maps " + targetName + (targetType == TARGET_SELF ? " haven't" : " hasn't") + " played in a long time\n\n";
 	}
 	
+	dictionary callbackArgs = {
+		{'plr', h_plr},
+		{'header', header},
+		{'maps', maps},
+		{'reverse', reverse}
+	};
+	
 	if (targetType == TARGET_ALL) {
-		sortMapsByFreshness(maps, getAllPlayers(), showFreshMaps_afterSort);
+		sortMapsByFreshness(maps, getAllPlayers(), showFreshMaps_afterSort, callbackArgs);
 	}
 	else {
 		PlayerMapHistory@ history = cast<PlayerMapHistory@>(g_player_map_history[targetId]);
@@ -348,34 +346,34 @@ void showFreshMaps(EHandle h_plr, int targetType, string targetName, string targ
 			maps[k].sort = stat.last_played;
 		}
 		
-		insertion_sort_step(maps, 1, showFreshMaps_afterSort);
+		insertion_sort_step(maps, 1, showFreshMaps_afterSort, callbackArgs);
 	}
 }
 
-void showFreshMaps_afterSort() {
-	CBasePlayer@ plr = cast<CBasePlayer@>(g_maplist_viewer.GetEntity());
+void showFreshMaps_afterSort(dictionary args) {
+	CBasePlayer@ plr = cast<CBasePlayer@>(EHandle(args['plr']).GetEntity());
 	if (plr is null) {
-		g_maplist_viewer = null;
 		return;
 	}
 	
-	g_maplist_viewer = null;
+	array<SortableMap>@ maps = cast<array<SortableMap>@>(args['maps']);
+	bool reverse = bool(args['reverse']);
 	
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, g_maplist_header);
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, string(args['header']));
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Map name                        Last played\n");
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "----------------------------------------------------------\n");
 	
-	for (uint m = 0; m < FRESH_MAP_LIMIT && m < g_maplist_maps.size(); m++) {		
-		uint idx = g_maplist_reverse ? m : g_maplist_maps.size() - (m+1);
-		string map = g_maplist_maps[idx].map;
+	for (uint m = 0; m < FRESH_MAP_LIMIT && m < maps.size(); m++) {		
+		uint idx = reverse ? m : maps.size() - (m+1);
+		string map = maps[idx].map;
 		
 		int padding = 32;
 		padding -= map.Length();
 		string spad = "";
 		for (int p = 0; p < padding; p++) spad += " ";
 		
-		int diff = int(DateTime().ToUnixTimestamp() - g_maplist_maps[idx].sort);
-		string age = g_maplist_maps[idx].sort == 0 ? "never" : formatLastPlayedTime(diff) + " ago";
+		int diff = int(DateTime().ToUnixTimestamp() - maps[idx].sort);
+		string age = maps[idx].sort == 0 ? "never" : formatLastPlayedTime(diff) + " ago";
 		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, map + spad + age + "\n");
 	}
 	

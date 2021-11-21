@@ -82,7 +82,8 @@ bool g_generating_rtv_list = false; // true while maps are being sorted for rtv 
 
 const float levelChangeDelay = 5.0f; // time in seconds intermission is shown for game_end
 
-
+dictionary g_lastLaggyCommands;
+const int LAGGY_COMAND_COOLDOWN = 3; // not laggy when run a few at a time, but the server would freeze if spammed
 
 void PluginInit() {
 
@@ -142,6 +143,7 @@ void reset() {
 	loadAllMapLists();
 	g_rtvVote.reset();
 	g_gameVote.reset();
+	g_lastLaggyCommands.clear();
 	g_lastGameVote = 0;
 	g_anyone_joined = false;
 	g_generating_rtv_list = false;
@@ -263,7 +265,7 @@ bool canAutoStartRtv() {
 	return false;
 }
 
-void createRtvMenu() {
+void createRtvMenu(dictionary args) {
 	array<string> rtvList;
 	if (!g_generating_rtv_list) {
 		return; // game_end interrupted sort
@@ -312,12 +314,12 @@ void startVote(string reason="") {
 	
 	if (g_randomRtvChoices.size() == 0) {
 		g_Log.PrintF("[RTV] All maps are excluded by the previous map list! Make sure g_ExcludePrevMaps value is less than the total nommable maps.\n");
-		createRtvMenu();
+		createRtvMenu({});
 		return;
 	}
 	
 	g_generating_rtv_list = true;
-	sortMapsByFreshness(g_randomRtvChoices, getActivePlayers(), function() { createRtvMenu(); });
+	sortMapsByFreshness(g_randomRtvChoices, getActivePlayers(), createRtvMenu, {});
 }
 
 void voteThinkCallback(MenuVote::MenuVote@ voteMenu, int secondsLeft) {
@@ -839,6 +841,22 @@ CBasePlayer@ getPlayerByName(CBasePlayer@ caller, string name) {
 	return null;
 }
 
+bool shouldLaggyCmdCooldown(CBasePlayer@ plr) {
+	string steamid = getPlayerUniqueId(plr);
+	float lastCommand = float(g_lastLaggyCommands[steamid]);
+
+	if (g_Engine.time - lastCommand < LAGGY_COMAND_COOLDOWN) {
+		int cooldown = LAGGY_COMAND_COOLDOWN - int(g_Engine.time - lastCommand);
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Wait " + cooldown + " seconds\n");
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Wait " + cooldown + " seconds\n");
+		return true;
+	}
+	
+	g_lastLaggyCommands[steamid] = g_Engine.time;
+	
+	return false;
+}
+
 // return 0 = chat not handled, 1 = handled and show chat, 2 = handled and hide chat
 int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	bool isAdmin = g_PlayerFuncs.AdminLevel(plr) >= ADMIN_YES;
@@ -875,10 +893,18 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			bool reverse = args[0] == ".newmaps";
 
 			if (args[1].ToLowercase() == "\\all") {
-				showFreshMaps(EHandle(plr), TARGET_ALL, "STEAM_0:????", "anyone", g_everyMap, reverse);
+				if (shouldLaggyCmdCooldown(plr)) {
+					return 2;
+				}
+			
+				showFreshMaps(EHandle(plr), TARGET_ALL, "anyone", "STEAM_0:????", copyArray(g_everyMap), reverse);
 			} else {
 				string nameUpper = args[1].ToUppercase();
 				if (nameUpper.Find("STEAM_0:") == 0) {
+					if (shouldLaggyCmdCooldown(plr)) {
+						return 2;
+					}
+				
 					dictionary freshArgs = {
 						{'plr', EHandle(plr)},
 						{'steamId', nameUpper},
@@ -886,11 +912,14 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 					};
 					
 					loadPlayerMapStats(nameUpper, function(args) {
-						//showFreshMaps(EHandle(plr), TARGET_PLAYER, nameUpper, nameUpper, g_everyMap, reverse);
 						string steamid = string(args['steamId']);
-						showFreshMaps(EHandle(args['plr']), TARGET_PLAYER, steamid, steamid, g_everyMap, bool(args['reverse']));
+						showFreshMaps(EHandle(args['plr']), TARGET_PLAYER, steamid, steamid, copyArray(g_everyMap), bool(args['reverse']));
 					}, freshArgs);
 				} else {
+					if (shouldLaggyCmdCooldown(plr)) {
+						return 2;
+					}
+				
 					CBasePlayer@ target = nameUpper.Length() > 0 ? getPlayerByName(plr, args[1]) : plr;
 				
 					if (target !is null) {
@@ -904,7 +933,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 							targetType = TARGET_PLAYER;
 						}
 						
-						showFreshMaps(EHandle(plr), targetType, targetName, targetId, g_everyMap, reverse);
+						showFreshMaps(EHandle(plr), targetType, targetName, targetId, copyArray(g_everyMap), reverse);
 					}
 				}
 			}

@@ -81,7 +81,9 @@ bool g_generating_rtv_list = false; // true while maps are being sorted for rtv 
 const float levelChangeDelay = 5.0f; // time in seconds intermission is shown for game_end
 
 dictionary g_lastLaggyCommands;
+dictionary g_lastQuestion;
 const int LAGGY_COMAND_COOLDOWN = 3; // not laggy when run a few at a time, but the server would freeze if spammed
+const int QUESTION_COOLDOWN = 60;
 
 void PluginInit() {
 
@@ -383,7 +385,7 @@ int tryRtv(CBasePlayer@ plr) {
 	
 	if (g_Engine.time < g_SecondsUntilVote.GetInt()) {
 		int timeLeft = int(Math.Ceil(float(g_SecondsUntilVote.GetInt()) - g_Engine.time));
-		g_PlayerFuncs.SayTextAll(plr, "[RTV] RTV will enable in " + timeLeft + " seconds.  -" + plr.pev.netname + "\n");
+		g_PlayerFuncs.SayText(plr, "[RTV] RTV will enable in " + timeLeft + " seconds.\n");
 		return 2;
 	}
 	
@@ -565,6 +567,12 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 			return tryNominate(plr, similarNames[0]);
 		}
 		
+		return false;
+	}
+	
+	if (g_Engine.time < g_SecondsUntilVote.GetInt()) {
+		int timeLeft = int(Math.Ceil(float(g_SecondsUntilVote.GetInt()) - g_Engine.time));
+		g_PlayerFuncs.SayText(plr, "[RTV] Nominations will enable in " + timeLeft + " seconds.\n");
 		return false;
 	}
 	
@@ -794,6 +802,28 @@ void loadAllMapLists() {
 	g_everyMap.sort(function(a,b) { return a.map.Compare(b.map) < 0; });
 }
 
+// return the first map in the series, if the current map is a series map
+void printSeriesInfo() {
+	string mapname = string(g_Engine.mapname).ToLowercase();
+	
+	array<string>@ mapKeys = g_seriesMaps.getKeys();
+	for (uint i = 0; i < mapKeys.length(); i++) {
+		array<SortableMap>@ maps = cast<array<SortableMap>@>(g_seriesMaps[mapKeys[i]]);
+		
+		for (uint k = 0; k < maps.size(); k++) {
+			if (maps[k].map == mapname) {
+				int prc = int((k / float(maps.size()))*100);
+				string msg = "This is map " + (k+1) + " of " + maps.size() + " in the \"" + maps[0].map + "\" series" +
+					" (" + prc + "%% complete).";
+				g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, msg + "\n");
+				return;
+			}
+		}
+	}
+	
+	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "This is not a map series.");
+}
+
 bool rejectNonAdmin(CBasePlayer@ plr) {
 	bool isAdmin = g_PlayerFuncs.AdminLevel(plr) >= ADMIN_YES;
 	
@@ -853,6 +883,21 @@ bool shouldLaggyCmdCooldown(CBasePlayer@ plr) {
 	return false;
 }
 
+bool shouldQuestionCooldown(CBasePlayer@ plr) {
+	string steamid = getPlayerUniqueId(plr);
+	float lastCommand = float(g_lastQuestion[steamid]);
+
+	if (g_Engine.time - lastCommand < QUESTION_COOLDOWN) {
+		int cooldown = QUESTION_COOLDOWN - int(g_Engine.time - lastCommand);
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Wait " + cooldown + " seconds\n");
+		return true;
+	}
+	
+	g_lastQuestion[steamid] = g_Engine.time;
+	
+	return false;
+}
+
 // return 0 = chat not handled, 1 = handled and show chat, 2 = handled and hide chat
 int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	bool isAdmin = g_PlayerFuncs.AdminLevel(plr) >= ADMIN_YES;
@@ -885,7 +930,13 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			
 			return 2;
 		}
-		if (args[0] == ".newmaps" || args[0] == ".recentmaps") {
+		if (args[0] == "series?") {
+			if (shouldQuestionCooldown(plr)) {
+				return 2;
+			}
+			printSeriesInfo();
+		}
+		else if (args[0] == ".newmaps" || args[0] == ".recentmaps") {
 			bool reverse = args[0] == ".newmaps";
 
 			if (args[1].ToLowercase() == "\\all") {

@@ -88,11 +88,12 @@ def get_all_maps(maps_dir):
 
 
 
-maps_dir = "../../../../svencoop/maps"
-maps_dir2 = "../../../../svencoop_downloads/maps"
 list_file = 'series_maps.txt'
 
-all_maps = get_all_maps(maps_dir) + get_all_maps(maps_dir2)
+all_maps = []
+for dir in ["../../../../svencoop/maps", "../../../../svencoop_downloads/maps", "../../../../svencoop_addon/maps"]:
+	if os.path.exists(dir):
+		all_maps += get_all_maps(dir)
 
 map_changes = {}
 all_nextmaps = set({})

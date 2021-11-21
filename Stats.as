@@ -98,7 +98,7 @@ class LastPlay {
 	string steamid;
 	string name;
 	bool wasConsidered = false; // was considered for deciding the next map
-	int last_played = 0;
+	uint64 last_played = 0;
 	int previousPlayPercent;
 	
 	LastPlay() {}
@@ -114,6 +114,16 @@ class LastPlay {
 	}
 }
 
+enum TargetTypes {
+	TARGET_SELF,
+	TARGET_PLAYER,
+	TARGET_ALL
+}
+
+funcdef void void_callback();
+
+funcdef void dict_callback(dictionary);
+
 void initStats() {
 	for (int i = 1; i <= g_Engine.maxClients; i++) {
 		CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
@@ -124,7 +134,7 @@ void initStats() {
 		
 		string steamid = getPlayerUniqueId(plr);
 		
-		loadPlayerMapStats(steamid);
+		loadPlayerMapStats(steamid, function(args){}, {});
 		g_player_activity[steamid] = PlayerActivity();
 	}
 }
@@ -136,7 +146,7 @@ string getPlayerDbPath(string steamid) {
 	return ROOT_DB_PATH + hash + "/" + safeid + ".txt";
 }
 
-void loadPlayerMapStats(string steamid) {
+void loadPlayerMapStats(string steamid, dict_callback@ callback, dictionary callbackArgs) {
 	PlayerMapHistory@ history = null;
 	
 	if (g_player_map_history.exists(steamid)) {
@@ -144,6 +154,7 @@ void loadPlayerMapStats(string steamid) {
 		
 		if (history !is null && history.loaded) {
 			//println("Skipping map history for player - already loaded");
+			callback(callbackArgs);
 			return;
 		}
 	}
@@ -195,9 +206,11 @@ void loadPlayerMapStats(string steamid) {
 
 	if (history.fileHandle.EOFReached()) {
 		history.fileHandle.Close();
-		history.loaded = true;	
+		history.loaded = true;
+		
+		callback(callbackArgs);
 	} else {
-		g_Scheduler.SetTimeout("loadPlayerMapStats", 0.0f, steamid);
+		g_Scheduler.SetTimeout("loadPlayerMapStats", 0.0f, steamid, callback, callbackArgs);
 	}
 }
 
@@ -227,7 +240,7 @@ void setNextMap() {
 uint insertSort(array<SortableMap>@ a, uint i) {
 	int ops = 0; // limit operations per frame so server doesn't freeze
 	
-    for (i = 1; i < a.size() && ops < 2000; i++) {
+    for (i; i < a.size() && ops < 2000; i++) {
         SortableMap value = SortableMap(a[i]);
 		int j;
 		
@@ -243,7 +256,7 @@ uint insertSort(array<SortableMap>@ a, uint i) {
 void insertion_sort_step(array<SortableMap>@ a, uint i, void_callback@ callback) {
 	i = insertSort(a, i);
 	
-	if (i < a.size()-1) {
+	if (i < a.size()) {
 		g_Scheduler.SetTimeout("insertion_sort_step", 0.0f, @a, i, @callback);
 	} else {
 		callback();
@@ -287,10 +300,10 @@ void sortMapsByFreshness(array<SortableMap>@ maps, array<SteamName>@ activePlaye
 		}
 	}
 	
-	insertion_sort_step(maps, 0, callback);
+	insertion_sort_step(maps, 1, callback);
 }
 
-void showFreshMaps(EHandle h_plr, EHandle h_target, array<SortableMap>@ maps, bool reverse) {
+void showFreshMaps(EHandle h_plr, int targetType, string targetName, string targetId, array<SortableMap>@ maps, bool reverse) {
 	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
 	if (plr is null || g_generating_rtv_list) {
 		return;
@@ -303,7 +316,7 @@ void showFreshMaps(EHandle h_plr, EHandle h_target, array<SortableMap>@ maps, bo
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Processing map list...\n");
 	
 	if (g_maplist_viewer.IsValid()) {
-		g_Scheduler.SetTimeout("showFreshMaps", 0.5f, h_plr, h_target, maps, reverse);
+		g_Scheduler.SetTimeout("showFreshMaps", 0.5f, h_plr, targetType, targetName, targetId, maps, reverse);
 		return; // wait for other player to get their results
 	}
 	
@@ -312,29 +325,21 @@ void showFreshMaps(EHandle h_plr, EHandle h_target, array<SortableMap>@ maps, bo
 	@g_maplist_maps = @maps;
 	g_maplist_reverse = reverse;
 	
-	CBasePlayer@ target = cast<CBasePlayer@>(h_target.GetEntity());	
-	bool targetIsAll = target is null;
-	bool targetIsYou = !targetIsAll and plr.entindex() == target.entindex();
-	string name = "you";
 	g_maplist_header = "";
-	if (!targetIsYou)
-		name = targetIsAll ? "anyone" : '"' + string(target.pev.netname) + '"';
 
-	if (reverse) {
-		g_maplist_header = "\n" + FRESH_MAP_LIMIT + " maps " + name + " played most recently\n\n";
+	if (!reverse) {
+		g_maplist_header = "\n" + FRESH_MAP_LIMIT + " maps " + targetName + " played most recently\n\n";
 	} else {
-		g_maplist_header = "\n" + FRESH_MAP_LIMIT + " maps " + name + (targetIsYou ? " haven't" : " hasn't") + " played in a long time\n\n";
+		g_maplist_header = "\n" + FRESH_MAP_LIMIT + " maps " + targetName + (targetType == TARGET_SELF ? " haven't" : " hasn't") + " played in a long time\n\n";
 	}
 	
-	if (target is null) {
+	if (targetType == TARGET_ALL) {
 		sortMapsByFreshness(maps, getAllPlayers(), showFreshMaps_afterSort);
 	}
 	else {
-		string steamid = getPlayerUniqueId(target);
-		
-		PlayerMapHistory@ history = cast<PlayerMapHistory@>(g_player_map_history[steamid]);
+		PlayerMapHistory@ history = cast<PlayerMapHistory@>(g_player_map_history[targetId]);
 		if (history is null) {
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, (targetIsYou ? "You have" : name + " has") + " no map history yet\n");
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, (targetType == TARGET_SELF ? "You have" : targetName + " has") + " no map history yet\n");
 			return;
 		}
 		
@@ -343,7 +348,7 @@ void showFreshMaps(EHandle h_plr, EHandle h_target, array<SortableMap>@ maps, bo
 			maps[k].sort = stat.last_played;
 		}
 		
-		insertion_sort_step(maps, 0, showFreshMaps_afterSort);
+		insertion_sort_step(maps, 1, showFreshMaps_afterSort);
 	}
 }
 
@@ -362,15 +367,15 @@ void showFreshMaps_afterSort() {
 	
 	for (uint m = 0; m < FRESH_MAP_LIMIT && m < g_maplist_maps.size(); m++) {		
 		uint idx = g_maplist_reverse ? m : g_maplist_maps.size() - (m+1);
-		string map = g_maplist_maps[m].map;
+		string map = g_maplist_maps[idx].map;
 		
 		int padding = 32;
 		padding -= map.Length();
 		string spad = "";
 		for (int p = 0; p < padding; p++) spad += " ";
 		
-		int diff = int(TimeDifference(DateTime(), DateTime(g_maplist_maps[m].sort)).GetTimeDifference());	
-		string age = g_maplist_maps[m].sort == 0 ? "never" : formatLastPlayedTime(diff) + " ago";
+		int diff = int(DateTime().ToUnixTimestamp() - g_maplist_maps[idx].sort);
+		string age = g_maplist_maps[idx].sort == 0 ? "never" : formatLastPlayedTime(diff) + " ago";
 		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, map + spad + age + "\n");
 	}
 	
@@ -444,7 +449,7 @@ void showLastPlayedTimes(CBasePlayer@ plr, string mapname) {
 			name += spad;
 		}
 		
-		int diff = int(TimeDifference(DateTime(), DateTime(allPlayers[c].last_played)).GetTimeDifference());
+		int64 diff = int64(DateTime().ToUnixTimestamp() - allPlayers[c].last_played);
 		string age = allPlayers[c].last_played == 0 ? "never" : formatLastPlayedTime(diff) + " ago";
 		
 		{
@@ -475,6 +480,7 @@ array<SteamName> getActivePlayers() {
 		string steamid = idKeys[i];
 		PlayerActivity@ activity = cast<PlayerActivity@>(g_player_activity[steamid]);
 		CBasePlayer@ plr = getPlayerById(steamid);
+		string name = plr !is null ? string(plr.pev.netname) : "???";
 		
 		bool isActiveNow = plr !is null;
 		
@@ -494,7 +500,7 @@ array<SteamName> getActivePlayers() {
 		g_prev_map_activity[steamid] = int(percentActive*100);
 		
 		if (wasActiveEnough) {
-			activePlayers.insertLast(SteamName(steamid, plr.pev.netname));
+			activePlayers.insertLast(SteamName(steamid, name));
 		}
 	}
 	

@@ -250,7 +250,7 @@ void restartVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenO
 	if (chosenOption.label == "Yes") {
 		voterState.handleVoteSuccess();
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to restart map passed. Restarting in 5 seconds.\n");
-		@g_timer = g_Scheduler.SetTimeout("change_map", MenuVote::g_resultTime + (5-MenuVote::g_resultTime), "" + g_Engine.mapname);
+		@g_timer = g_Scheduler.SetTimeout("game_end", MenuVote::g_resultTime + (5-MenuVote::g_resultTime), "" + g_Engine.mapname);
 	}
 	else {
 		int required = RESTART_MAP_PERCENT_REQ;

@@ -44,6 +44,7 @@ CClientCommand lastplay("lastplay", "Show previous play times for a map", @conso
 CClientCommand lastplays("lastplays", "Show previous play times for a map", @consoleCmd);
 CClientCommand recentmaps("recentmaps", "Show recently played maps", @consoleCmd);
 CClientCommand newmaps("newmaps", "Show maps that haven't been played for the longest time", @consoleCmd);
+CClientCommand mapinfo("mapinfo", "Show maps that haven't been played for the longest time", @consoleCmd);
 
 CCVar@ g_SecondsUntilVote;
 CCVar@ g_MaxMapsToVote;
@@ -261,8 +262,6 @@ bool canAutoStartRtv() {
 	
 	return false;
 }
-
-funcdef void void_callback();
 
 void createRtvMenu() {
 	array<string> rtvList;
@@ -846,15 +845,68 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	
 	if (args.ArgC() >= 1)
 	{
+		if (args[0] == ".mapinfo") {
+			if (rejectNonAdmin(plr)) {
+				return 2;
+			}			
+			
+			for (int i = 1; i <= g_Engine.maxClients; i++) {
+				CBasePlayer@ p = g_PlayerFuncs.FindPlayerByIndex(i);
+				
+				if (p is null or !p.IsConnected()) {
+					continue;
+				}
+				
+				string steamid = getPlayerUniqueId(p);
+				
+				PlayerMapHistory@ history = cast<PlayerMapHistory@>(g_player_map_history[steamid]);
+				if (history is null) {
+					continue;
+				}
+				
+				MapStat@ stat = history.stats.get(g_Engine.mapname);
+				
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "" + p.pev.netname + " " + g_Engine.mapname + " " + stat.last_played + "\n");
+			}
+			
+			return 2;
+		}
 		if (args[0] == ".newmaps" || args[0] == ".recentmaps") {
-			bool reverse = args[0] == ".recentmaps";
+			bool reverse = args[0] == ".newmaps";
 
 			if (args[1].ToLowercase() == "\\all") {
-				showFreshMaps(EHandle(plr), EHandle(null), g_everyMap, reverse);
+				showFreshMaps(EHandle(plr), TARGET_ALL, "STEAM_0:????", "anyone", g_everyMap, reverse);
 			} else {
-				CBasePlayer@ target = args[1].Length() > 0 ? getPlayerByName(plr, args[1]) : plr;
-				if (target !is null)
-					showFreshMaps(EHandle(plr), target, g_everyMap, reverse);
+				string nameUpper = args[1].ToUppercase();
+				if (nameUpper.Find("STEAM_0:") == 0) {
+					dictionary freshArgs = {
+						{'plr', EHandle(plr)},
+						{'steamId', nameUpper},
+						{'reverse', reverse}
+					};
+					
+					loadPlayerMapStats(nameUpper, function(args) {
+						//showFreshMaps(EHandle(plr), TARGET_PLAYER, nameUpper, nameUpper, g_everyMap, reverse);
+						string steamid = string(args['steamId']);
+						showFreshMaps(EHandle(args['plr']), TARGET_PLAYER, steamid, steamid, g_everyMap, bool(args['reverse']));
+					}, freshArgs);
+				} else {
+					CBasePlayer@ target = nameUpper.Length() > 0 ? getPlayerByName(plr, args[1]) : plr;
+				
+					if (target !is null) {
+						string targetName = "you";
+						string targetId = getPlayerUniqueId(plr);
+						int targetType = TARGET_SELF;
+						
+						if (target.entindex() != plr.entindex()) {
+							targetName = '"' + target.pev.netname + '"';
+							targetId = getPlayerUniqueId(plr);
+							targetType = TARGET_PLAYER;
+						}
+						
+						showFreshMaps(EHandle(plr), targetType, targetName, targetId, g_everyMap, reverse);
+					}
+				}
 			}
 				
 			return 2;
@@ -999,7 +1051,7 @@ HookReturnCode ClientSay( SayParameters@ pParams ) {
 
 HookReturnCode ClientJoin( CBasePlayer@ plr ) {	
 	string steamid = getPlayerUniqueId(plr);
-	loadPlayerMapStats(steamid);
+	loadPlayerMapStats(steamid, function(args){}, {});
 	
 	if (g_player_activity.exists(steamid)) {
 		PlayerActivity@ activity = cast<PlayerActivity@>(g_player_activity[steamid]);

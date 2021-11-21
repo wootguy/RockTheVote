@@ -4,7 +4,6 @@
 #include "HashMap"
 
 // TODO:
-// - dont show log message for <4 plaers on classic restart
 // - reopen menu should close again or not show messsage
 
 class RtvState {
@@ -34,8 +33,6 @@ class SortableMap {
 
 CClientCommand forcertv("forcertv", "Lets admin force a vote", @consoleCmd);
 CClientCommand cancelrtv("cancelrtv", "Lets admin cancel an ongoing RTV vote", @consoleCmd);
-CClientCommand pastmaplist("pastmaplist", "Show recently played maps (up to g_ExcludePrevMapsNom)", @consoleCmd);
-CClientCommand pastmaplistfull("pastmaplistfull", "Show recently played maps (up to g_ExcludePrevMapsNomMeme)", @consoleCmd);
 CClientCommand set_nextmap("set_nextmap", "Set the next map cycle", @consoleCmd);
 CClientCommand map("map", "Force a map change", @consoleCmd);
 CClientCommand vote("vote", "Start a vote or reopen the vote menu", @consoleCmd);
@@ -50,9 +47,8 @@ CCVar@ g_SecondsUntilVote;
 CCVar@ g_MaxMapsToVote;
 CCVar@ g_VotingPeriodTime;
 CCVar@ g_PercentageRequired;
-CCVar@ g_ExcludePrevMaps;			// limit before a map can be randomly added to the RTV menu again
-CCVar@ g_ExcludePrevMapsNom;		// limit for nomming a regular map again
-CCVar@ g_ExcludePrevMapsNomMeme;	// limit for nomming a hidden/meme map again
+CCVar@ g_NormalMapCooldown;
+CCVar@ g_MemeMapCooldown;
 CCVar@ g_EnableGameVotes;			// enable text menu replacements for the default game votes
 CCVar@ g_EnableForceSurvivalVotes;	// enable semi-survival vote (requires ForceSurvival plugin)
 
@@ -64,16 +60,11 @@ array<string> g_normalMaps;
 const string hiddenMapsFile = "scripts/plugins/cfg/hidden_nom_maps.txt";
 array<string> g_hiddenMaps;
 
-// previously played maps, to prevent nom'ing maps that were played too recently
-const string previousMapsFile = "scripts/plugins/store/previous_maps.txt";
-array<string> g_previousMaps;
-
 array<RtvState> g_playerStates;
 array<SortableMap> g_everyMap; // sorted combination of normal and hidden maps
-array<SortableMap> g_randomRtvChoices; // normal votable maps which aren't in the previous map list
-array<SortableMap> g_randomCycleMaps; // map cycle maps which aren't in the previous map list
+array<SortableMap> g_randomRtvChoices; // normal votable maps (all maps besides the meme ones)
+array<SortableMap> g_randomCycleMaps; // map cycle maps (only the "good" maps)
 array<string> g_nomList; // maps nominated by players
-dictionary g_prevMapPosition; // maps a map name to its position in the previous map list (for faster nom menus)
 dictionary g_memeMapsHashed; // for faster meme map checks
 MenuVote::MenuVote g_rtvVote;
 uint g_maxNomMapNameLength = 0; // used for even spacing in the full console map list
@@ -98,9 +89,8 @@ void PluginInit() {
 	@g_MaxMapsToVote = CCVar("iMaxMaps", 6, "How many maps can players nominate and vote for later", ConCommandFlag::AdminOnly);
 	@g_VotingPeriodTime = CCVar("secondsToVote", 25, "How long can players vote for a map before a map is chosen", ConCommandFlag::AdminOnly);
 	@g_PercentageRequired = CCVar("iPercentReq", 66, "0-100, percent of players required to RTV before voting happens", ConCommandFlag::AdminOnly);
-	@g_ExcludePrevMaps = CCVar("iExcludePrevMaps", 800, "How many maps to previous maps to remember", ConCommandFlag::AdminOnly);
-	@g_ExcludePrevMapsNom = CCVar("iExcludePrevMapsNomOnly", 20, "Exclude recently played maps from nominations", ConCommandFlag::AdminOnly);
-	@g_ExcludePrevMapsNomMeme = CCVar("iExcludePrevMapsNomOnlyMeme", 400, "Exclude recently played maps from nominations (hidden maps)", ConCommandFlag::AdminOnly);
+	@g_NormalMapCooldown = CCVar("NormalMapCooldown", 24*30, "Time in hours before a map can be nommed again", ConCommandFlag::AdminOnly);
+	@g_MemeMapCooldown = CCVar("MemeMapCooldown", 24*30, "Time in hours before a meme map can be nommed again", ConCommandFlag::AdminOnly);
 	@g_EnableGameVotes = CCVar("gameVotes", 1, "Text menu replacements for the default game votes", ConCommandFlag::AdminOnly);
 	@g_EnableForceSurvivalVotes = CCVar("forceSurvivalVotes", 0, "Enable semi-survival vote (requires ForceSurvival plugin)", ConCommandFlag::AdminOnly);
 
@@ -128,7 +118,6 @@ void MapInit() {
 }
 
 HookReturnCode MapChange() {
-	writePreviousMapsList();
 	writeActivePlayerStats();
 	g_player_activity.clear();
 	g_Scheduler.RemoveTimer(g_timer);
@@ -436,34 +425,35 @@ void cancelRtv(CBasePlayer@ plr) {
 	g_PlayerFuncs.SayTextAll(plr, "[RTV] Vote cancelled by " + plr.pev.netname + "!\n");
 }
 
-// returns number of maps needed to play before it can be nom'd
-int getMapExcludeTime(string mapname, bool printMessage=false, CBasePlayer@ plr=null) {
-	if (!g_prevMapPosition.exists(mapname)) {
-		return 0;
-	}
-
-	int lastPrevIdx = 0;
-	g_prevMapPosition.get(mapname, lastPrevIdx);
-	
+// returns true if someone in the server played the map too recently for it to be nominated again
+bool isMapExcluded(string mapname, array<SteamName> activePlayers, CBasePlayer@ plr) {
 	bool isMemeMap = g_memeMapsHashed.exists(mapname);
-	int mapsAgo = g_previousMaps.size() - lastPrevIdx;
+	int cooldown = (isMemeMap ? g_MemeMapCooldown.GetInt() : g_NormalMapCooldown.GetInt()) * 60*60;
+	int recentCount = 0;
+	string recentName;
+	
+	string steamid = getPlayerUniqueId(plr);
 
-	if (isMemeMap && mapsAgo < g_ExcludePrevMapsNomMeme.GetInt()) {
-		int leftToPlay = (g_ExcludePrevMapsNomMeme.GetInt() - mapsAgo) + 1;
-		if (printMessage) {
-			g_PlayerFuncs.SayText(plr, "[RTV] \"" + mapname + "\" excluded until " + leftToPlay + " other nom-able maps have been played with 4+ players.\n");
+	for (uint i = 0; i < activePlayers.size(); i++) {
+		if (steamid == activePlayers[i].steamid) {
+			continue;
 		}
-		return leftToPlay;
-	}
-	else if (!isMemeMap && mapsAgo < g_ExcludePrevMapsNom.GetInt()) {
-		int leftToPlay = (g_ExcludePrevMapsNom.GetInt() - mapsAgo) + 1;
-		if (printMessage) {
-			g_PlayerFuncs.SayText(plr, "[RTV] \"" + mapname + "\" excluded until " + leftToPlay + " other nom-able maps have been played with 4+ players.\n");
+		
+		uint64 lastPlay = getLastPlayTime(activePlayers[i].steamid, mapname);
+		int diff = int(DateTime().ToUnixTimestamp() - lastPlay);
+		
+		if (diff < cooldown) {
+			recentCount += 1;
+			recentName = activePlayers[i].name;
 		}
-		return leftToPlay;
 	}
 	
-	return 0;
+	if (recentCount > 0) {
+		string splr = recentCount == 1 ?  recentName : "" + recentCount + " people here";
+		g_PlayerFuncs.SayText(plr, "[RTV] Can't nom \"" + mapname + "\" yet. " + splr + " played that less than " + formatLastPlayedTime(cooldown) + " ago.\n");
+	}
+	
+	return recentCount > 0;
 }
 
 void nomMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTextMenuItem@ item) {
@@ -473,12 +463,26 @@ void nomMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTextMen
 
 	string nomChoice;
 	item.m_pUserData.retrieve(nomChoice);
-	tryNominate(plr, nomChoice);
+	
+	array<string> parts = nomChoice.Split(":");
+	string mapname = parts[0];
+	string mapfilter = parts[1];
+	int itempage = atoi(parts[2]);
+	
+	if (!tryNominate(plr, mapname)) {
+		array<string> similarNames = generateNomMenu(mapfilter);
+		g_Scheduler.SetTimeout("openNomMenu", 0.0f, EHandle(plr), mapfilter, similarNames, itempage);
+	}
 }
 
-void openNomMenu(CBasePlayer@ plr, string mapfilter, array<string> maps) {
+void openNomMenu(EHandle h_plr, string mapfilter, array<string> maps, int page) {
+	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+	if (plr is null) {
+		return;
+	}
+	
 	int eidx = plr.entindex();
-			
+	
 	@g_menus[eidx] = CTextMenu(@nomMenuCallback);
 	
 	string title = "\\yMaps containing \"" + mapfilter + "\"	 ";
@@ -487,23 +491,39 @@ void openNomMenu(CBasePlayer@ plr, string mapfilter, array<string> maps) {
 	}
 	g_menus[eidx].SetTitle(title);
 	
+	array<SteamName> activePlayers = getActivePlayers();
+	
 	for (uint i = 0; i < maps.size(); i++) {
+		int itempage = i / 7;
 		string label = maps[i] + "\\y";
-		
-		int mapsLeft = getMapExcludeTime(maps[i]);
-		if (mapsLeft > 0) {
-			label = "\\r" + label + "	\\d(" + mapsLeft + ")\\y";
-		} else {
-			label = "\\w" + label;
-		}
-		
-		g_menus[eidx].AddItem(label, any(maps[i]));
+		label = "\\w" + label;
+		g_menus[eidx].AddItem(label, any(maps[i] + ":" + mapfilter + ":" + itempage));
 	}
 	
 	if (!(g_menus[eidx].IsRegistered()))
 		g_menus[eidx].Register();
 		
-	g_menus[eidx].Open(0, 0, plr);
+	g_menus[eidx].Open(0, page, plr);
+}
+
+array<string> generateNomMenu(string mapname) {
+	bool fullNomMenu = mapname.Length() == 0;
+	array<string> similarNames;
+	
+	if (fullNomMenu) {
+		for (uint i = 0; i < g_everyMap.size(); i++) {
+			similarNames.insertLast(g_everyMap[i].map);
+		}
+	}
+	else {
+		for (uint i = 0; i < g_everyMap.size(); i++) {
+			if (int(g_everyMap[i].map.Find(mapname)) != -1) {
+				similarNames.insertLast(g_everyMap[i].map);
+			}
+		}
+	}
+	
+	return similarNames;
 }
 
 bool tryNominate(CBasePlayer@ plr, string mapname) {
@@ -514,6 +534,7 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 	int eidx = plr.entindex();
 	bool dontAutoNom = int(mapname.Find("*")) != -1; // player just wants to search for maps with this string
 	mapname.Replace("*", "");
+	mapname.Replace(":", ""); // used as delimiter in nom menu option data
 	bool fullNomMenu = mapname.Length() == 0;
 	
 	bool mapExists = false;
@@ -524,26 +545,13 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 	}
 
 	if (fullNomMenu || dontAutoNom || !mapExists) {
-		array<string> similarNames;
-		
-		if (fullNomMenu) {
-			for (uint i = 0; i < g_everyMap.size(); i++) {
-				similarNames.insertLast(g_everyMap[i].map);
-			}
-		}
-		else {
-			for (uint i = 0; i < g_everyMap.size(); i++) {
-				if (int(g_everyMap[i].map.Find(mapname)) != -1) {
-					similarNames.insertLast(g_everyMap[i].map);
-				}
-			}
-		}
+		array<string> similarNames = generateNomMenu(mapname);
 		
 		if (similarNames.size() == 0) {
 			g_PlayerFuncs.SayText(plr, "[RTV] No maps containing \"" + mapname + "\" exist.");
 		}
 		else if (similarNames.size() > 1 || dontAutoNom) {
-			openNomMenu(plr, mapname, similarNames);
+			openNomMenu(plr, mapname, similarNames, 0);
 		}
 		else if (similarNames.size() == 1) {
 			return tryNominate(plr, similarNames[0]);
@@ -554,11 +562,6 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 	
 	if (mapname == g_Engine.mapname) {
 		g_PlayerFuncs.SayText(plr, "[RTV] Can't nominate the current map!\n");
-		return false;
-	}
-	
-	int mapExcludeTime = getMapExcludeTime(mapname);
-	if (getMapExcludeTime(mapname, true, plr) > 0) {
 		return false;
 	}
 	
@@ -574,6 +577,10 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 	
 	if (!g_EngineFuncs.IsMapValid(mapname)) {
 		g_PlayerFuncs.SayText(plr, "[RTV] \"" + mapname + "\" does not exist! Why is it in the nom list???\n");
+		return false;
+	}
+	
+	if (isMapExcluded(mapname, getActivePlayers(), plr)) {
 		return false;
 	}
 	
@@ -635,27 +642,6 @@ void sendMapList(CBasePlayer@ plr) {
 	g_PlayerFuncs.SayText(plr, "[RTV] Map list written to console");
 }
 
-void sendPastMapList(CBasePlayer@ plr) {
-	int start = 0;
-	if (int(g_previousMaps.length()) > g_ExcludePrevMapsNom.GetInt()) {
-		start = g_previousMaps.length() - g_ExcludePrevMapsNom.GetInt();
-	}
-	
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "--Past maplist---------------\n");
-	for (uint i = start; i < g_previousMaps.length(); i++) {
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, " " + ((i-start) + 1) +	 ": "  + g_previousMaps[i] + "\n");
-	}
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "-----------------------------\n");
-}
-
-void sendPastMapList_full(CBasePlayer@ plr) {
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "--Past maplist---------------\n");
-	for (uint i = 0; i < g_previousMaps.length(); i++) {
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, " " + (i + 1) +	 ": "  + g_previousMaps[i] + "\n");
-	}
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "-----------------------------\n");
-}
-
 array<string> loadMapList(string path, bool ignoreDuplicates=false) {
 	array<string> maplist;
 
@@ -708,15 +694,8 @@ array<string> loadMapList(string path, bool ignoreDuplicates=false) {
 void loadAllMapLists() {
 	g_normalMaps = loadMapList(votelistFile);
 	g_hiddenMaps = loadMapList(hiddenMapsFile);
-	g_previousMaps = loadMapList(previousMapsFile, true);
 	
-	g_prevMapPosition.clear();
 	g_memeMapsHashed.clear();
-	
-	// use a dictionary to check for maps to exclude faster
-	for (uint i = 0; i < g_previousMaps.size(); i++) {
-		g_prevMapPosition[g_previousMaps[i]] = i;
-	}
 	
 	g_everyMap.resize(0);
 	g_randomRtvChoices.resize(0);
@@ -742,60 +721,19 @@ void loadAllMapLists() {
 		if (g_normalMaps[i].Length() > g_maxNomMapNameLength) {
 			g_maxNomMapNameLength = g_normalMaps[i].Length();
 		}
-		if (!g_prevMapPosition.exists(g_normalMaps[i]) and g_normalMaps[i] != g_Engine.mapname) {
+		if (g_normalMaps[i] != g_Engine.mapname) {
 			g_randomRtvChoices.insertLast(SortableMap(g_normalMaps[i]));
 		}
 	}
 	
 	array<string> mapCycleMaps = g_MapCycle.GetMapCycle();
 	for (uint i = 0; i < mapCycleMaps.size(); i++) {
-		if (!g_prevMapPosition.exists(mapCycleMaps[i]) and mapCycleMaps[i] != g_Engine.mapname) {
+		if (mapCycleMaps[i] != g_Engine.mapname) {
 			g_randomCycleMaps.insertLast(SortableMap(mapCycleMaps[i]));
 		}
 	}
 
 	g_everyMap.sort(function(a,b) { return a.map.Compare(b.map) < 0; });
-}
-
-void writePreviousMapsList() {
-	string mapname = string(g_Engine.mapname).ToLowercase();
-
-	if (g_PlayerFuncs.GetNumPlayers() < 4) {
-		g_Log.PrintF("[RTV] Not writing previous map - less than 4 players\n");
-		return;
-	}
-	if (g_normalMaps.find(mapname) < 0 && g_hiddenMaps.find(mapname) < 0) {
-		g_Log.PrintF("[RTV] Not writing previous map - " + mapname + " not in vote list(s)\n");
-		return; // prevent maps in a series from being added to the list
-	}
-
-	if (g_previousMaps.size() > 0 and g_previousMaps[g_previousMaps.size()-1] == mapname) {
-		g_Log.PrintF("[RTV] Not writing previous map - restarts are not counted\n");
-		return; // don't count map restarts
-	}
-
-	g_previousMaps.insertLast(string(g_Engine.mapname).ToLowercase());
-	while ((int(g_previousMaps.length()) > g_ExcludePrevMaps.GetInt())) {
-		g_previousMaps.removeAt(0);
-	}
-
-	File@ f = g_FileSystem.OpenFile(previousMapsFile, OpenFile::WRITE);
-
-	if (f.IsOpen()) {
-		int numWritten = 0;
-		for (uint i = 0; i < g_previousMaps.size(); i++) {
-			string name = g_previousMaps[i];
-			name.Trim();
-			if (name.Length() == 0) {
-				continue;
-			}
-
-			f.Write(name + "\n");
-		}
-		f.Close();
-	}
-	else
-		g_Log.PrintF("Failed to open previous maps file: " + previousMapsFile + "\n");
 }
 
 bool rejectNonAdmin(CBasePlayer@ plr) {
@@ -983,14 +921,6 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		}
 		else if (args[0] == "maplist" || args[0] == "listmaps") {
 			sendMapList(plr);
-			return 2;
-		}
-		else if (args[0] == ".pastmaplist") {
-			sendPastMapList(plr);
-			return 2;
-		}
-		else if (args[0] == ".pastmaplistfull") {
-			sendPastMapList_full(plr);
 			return 2;
 		}
 		else if (args[0] == ".forcertv") {

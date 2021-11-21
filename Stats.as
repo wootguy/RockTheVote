@@ -308,9 +308,18 @@ array<SortableMap> copyArray(array<SortableMap>@ arr) {
 	return newArr;
 }
 
+uint64 getLastPlayTime(string steamid, SortableMap map) {
+	PlayerMapHistory@ history = cast<PlayerMapHistory@>(g_player_map_history[steamid]);
+	if (history is null) {
+		return 0;
+	}
+	
+	return history.stats.get(map.map, map.hashKey).last_played;
+}
+
 void showFreshMaps(EHandle h_plr, int targetType, string targetName, string targetId, array<SortableMap>@ maps, bool reverse) {
 	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
-	if (plr is null || g_generating_rtv_list) {
+	if (plr is null) {
 		return;
 	}
 	
@@ -363,9 +372,18 @@ void showFreshMaps_afterSort(dictionary args) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Map name                        Last played\n");
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "----------------------------------------------------------\n");
 	
-	for (uint m = 0; m < FRESH_MAP_LIMIT && m < maps.size(); m++) {		
+	int listedMaps = 0;
+	int numExclude = 0;
+	for (uint m = 0; listedMaps < FRESH_MAP_LIMIT && m < maps.size(); m++) {		
 		uint idx = reverse ? m : maps.size() - (m+1);
 		string map = maps[idx].map;
+		
+		if (g_memeMapsHashed.exists(map)) {
+			numExclude += 1;
+			continue;
+		}
+		
+		listedMaps++;
 		
 		int padding = 32;
 		padding -= map.Length();
@@ -378,6 +396,7 @@ void showFreshMaps_afterSort(dictionary args) {
 	}
 	
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "----------------------------------------------------------\n\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Hidden maps (maps with long cooldowns) are not included in this list.\n\n");
 }
 
 void showLastPlayedTimes(CBasePlayer@ plr, string mapname) {

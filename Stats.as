@@ -314,6 +314,19 @@ uint64 getLastPlayTime(string steamid, SortableMap map) {
 		return 0;
 	}
 	
+	if (g_seriesMaps.exists(map.map)) {
+		array<SortableMap>@ series = cast<array<SortableMap>@>(g_seriesMaps[map.map]);
+		
+		uint64 mostRecent = 0;
+		
+		for (uint i = 0; i < series.size(); i++) {
+			uint64 lastPlay = history.stats.get(series[i].map, series[i].hashKey).last_played;
+			mostRecent = Math.max(lastPlay, mostRecent);
+		}
+		
+		return mostRecent;
+	}
+	
 	return history.stats.get(map.map, map.hashKey).last_played;
 }
 

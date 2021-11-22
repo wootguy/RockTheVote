@@ -91,16 +91,26 @@ def get_all_maps(maps_dir):
 list_file = 'series_maps.txt'
 
 all_maps = []
-for dir in ["../../../../svencoop/maps", "../../../../svencoop_downloads/maps", "../../../../svencoop_addon/maps"]:
+for dir in ["../../../../svencoop/maps", "../../../../svencoop_addon/maps", "../../../../svencoop_downloads/maps"]:
 	if os.path.exists(dir):
 		all_maps += get_all_maps(dir)
+
+
+series_ignore = []
+with open('series_ignore.txt', mode='r') as f:
+	for map in f.readlines():
+		map = map[:map.find('/')]
+		series_ignore.append(map.lower().strip())
 
 map_changes = {}
 all_nextmaps = set({})
 
 last_progress_str = ''
 for idx, map_path in enumerate(all_maps):
-	map_name = os.path.basename(map_path)
+	map_name = os.path.basename(map_path).lower().replace('.bsp', '')
+	
+	if map_name in series_ignore:
+		continue
 
 	progress_str = "Progress: %s / %s  (%s)" % (idx, len(all_maps), map_name)
 	padded_progress_str = progress_str
@@ -114,11 +124,10 @@ for idx, map_path in enumerate(all_maps):
 	for ent in all_ents:
 		if 'classname' in ent and 'trigger_changelevel' in ent['classname'] and 'map' in ent:
 			nextmap = ent['map'].lower()
-			lmap = map_name.lower().replace('.bsp', '')
-			if lmap in map_changes:
-				map_changes[lmap].append(nextmap)
+			if map_name in map_changes:
+				map_changes[map_name].append(nextmap)
 			else:
-				map_changes[lmap] = [nextmap]
+				map_changes[map_name] = [nextmap]
 			
 			all_nextmaps.add(nextmap)
 

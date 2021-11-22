@@ -81,7 +81,7 @@ bool g_generating_rtv_list = false; // true while maps are being sorted for rtv 
 const float levelChangeDelay = 5.0f; // time in seconds intermission is shown for game_end
 
 dictionary g_lastLaggyCommands;
-dictionary g_lastQuestion;
+float g_lastQuestion = 0;
 const int LAGGY_COMAND_COOLDOWN = 3; // not laggy when run a few at a time, but the server would freeze if spammed
 const int QUESTION_COOLDOWN = 60;
 
@@ -145,6 +145,7 @@ void reset() {
 	g_lastGameVote = 0;
 	g_anyone_joined = false;
 	g_generating_rtv_list = false;
+	g_lastQuestion = -999;
 }
 
 void loadCrossPluginAfkState() {
@@ -885,15 +886,14 @@ bool shouldLaggyCmdCooldown(CBasePlayer@ plr) {
 
 bool shouldQuestionCooldown(CBasePlayer@ plr) {
 	string steamid = getPlayerUniqueId(plr);
-	float lastCommand = float(g_lastQuestion[steamid]);
 
-	if (g_Engine.time - lastCommand < QUESTION_COOLDOWN) {
-		int cooldown = QUESTION_COOLDOWN - int(g_Engine.time - lastCommand);
+	if (g_Engine.time - g_lastQuestion < QUESTION_COOLDOWN) {
+		int cooldown = QUESTION_COOLDOWN - int(g_Engine.time - g_lastQuestion);
 		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCENTER, "Wait " + cooldown + " seconds\n");
 		return true;
 	}
 	
-	g_lastQuestion[steamid] = g_Engine.time;
+	g_lastQuestion = g_Engine.time;
 	
 	return false;
 }
@@ -925,7 +925,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 				
 				MapStat@ stat = history.stats.get(g_Engine.mapname);
 				
-				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "" + p.pev.netname + " " + g_Engine.mapname + " " + stat.last_played + "\n");
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "" + p.pev.netname + " " + g_Engine.mapname + " " + stat.last_played + " " + getPlayerDbPath(steamid) + "\n");
 			}
 			
 			return 2;
@@ -935,6 +935,8 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 				return 2;
 			}
 			printSeriesInfo();
+			
+			return 0;
 		}
 		else if (args[0] == ".newmaps" || args[0] == ".recentmaps") {
 			bool reverse = args[0] == ".newmaps";

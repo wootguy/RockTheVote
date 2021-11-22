@@ -2,7 +2,7 @@ import os, sys, re, datetime
 from dateutil.tz import tzoffset
 
 MAX_BUCKETS = 256 # should match the value in Database.as
-logs_path = 'logs_2021_06_11'
+logs_path = 'logs'
 logs_utc_offset = 1 # when parsing logs, use this timezone offset (hours)
 
 store_path = "../../../../svencoop/scripts/plugins/store"
@@ -48,6 +48,7 @@ def build_db():
 		print("  1. create a folder named '%s' in the same folder as this script" % logs_path)
 		print("  2. copy all log files to the new '%s' folder" % logs_path)
 		print("  3. run this script again")
+		return
 	
 	x = input("Server logs folder detected. Do you want to rebuild the stats database? This will overwrite existing files. (y/n): ")
 	if x.lower() != 'y':

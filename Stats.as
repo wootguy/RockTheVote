@@ -41,6 +41,7 @@ dictionary g_prev_map_activity; // maps steam id to percentage active time in pr
 array<SteamName> g_nextmap_players; // active players from the previous map that will decide the next map for the current map
 bool g_anyone_joined = false; // used to prevent double-loaded maps from clearing active player list
 string g_previous_map = ""; // last map which ran the map selection logic
+float g_lastActiveCheck = 0;
 
 enum MAP_RATINGS {
 	RATE_NONE, // no preference or never played
@@ -67,13 +68,7 @@ class PlayerMapHistory {
 }
 
 class PlayerActivity {
-	float firstActivity;
-	float lastActivity;
-	
-	PlayerActivity() {
-		firstActivity = 0;
-		lastActivity = g_Engine.time;
-	}
+	float totalActivity;
 }
 
 class SteamName {
@@ -94,6 +89,7 @@ class LastPlay {
 	bool wasConsidered = false; // was considered for deciding the next map
 	uint64 last_played = 0;
 	int previousPlayPercent;
+	int total_plays = 0;
 	
 	LastPlay() {}
 	
@@ -130,6 +126,33 @@ void initStats() {
 		
 		loadPlayerMapStats(steamid, function(args){}, {});
 		g_player_activity[steamid] = PlayerActivity();
+	}
+	
+	g_lastActiveCheck = g_Engine.time;
+	
+	g_Scheduler.SetInterval("updatePlayerActivity", 1.0f, -1);
+}
+
+void updatePlayerActivity() {
+	float delta = g_Engine.time - g_lastActiveCheck;
+	g_lastActiveCheck = g_Engine.time;
+	
+	for (int i = 1; i <= g_Engine.maxClients; i++) {
+		CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
+		
+		if (plr is null or !plr.IsConnected()) {
+			continue;
+		}
+		
+		if (g_playerStates[i].afkTime != 0) {
+			continue;
+		}
+		
+		PlayerActivity@ activity = cast<PlayerActivity@>(g_player_activity[getPlayerUniqueId(plr)]);
+		
+		if (activity !is null) {
+			activity.totalActivity += delta;
+		}
 	}
 }
 
@@ -222,7 +245,7 @@ void setFreshMapAsNextMap(array<SortableMap>@ maps) {
 		return;
 	}
 	
-	sortMapsByFreshness(maps, g_nextmap_players, setNextMap, {});
+	sortMapsByFreshness(maps, g_nextmap_players, 0, setNextMap, {});
 }
 
 void setNextMap(dictionary args) {
@@ -267,7 +290,7 @@ void shuffle(array<SortableMap>@ arr) {
 }
 
 // sorts according to minimum play time of all players in the server
-void sortMapsByFreshness(array<SortableMap>@ maps, array<SteamName>@ activePlayers, dict_callback@ callback, dictionary callbackArgs) {
+void sortMapsByFreshness(array<SortableMap>@ maps, array<SteamName>@ activePlayers, uint pidx, dict_callback@ callback, dictionary callbackArgs) {
 	if (activePlayers.size() == 0) {
 		return;
 	}
@@ -276,8 +299,8 @@ void sortMapsByFreshness(array<SortableMap>@ maps, array<SteamName>@ activePlaye
 		maps[k].sort = 0;
 	}
 	
-	for ( uint c = 0; c < activePlayers.size(); c++ ) {
-		string steamid = activePlayers[c].steamid;
+	for ( pidx; pidx < activePlayers.size(); pidx++ ) {
+		string steamid = activePlayers[pidx].steamid;
 		
 		PlayerMapHistory@ history = cast<PlayerMapHistory@>(g_player_map_history[steamid]);
 		if (history is null) {
@@ -294,7 +317,11 @@ void sortMapsByFreshness(array<SortableMap>@ maps, array<SteamName>@ activePlaye
 		}
 	}
 	
-	insertion_sort_step(maps, 1, callback, callbackArgs);
+	if (pidx < activePlayers.size()) {
+		g_Scheduler.SetTimeout("sortMapsByFreshness", 0.0f, @maps, @activePlayers, pidx, callback, callbackArgs);
+	} else {
+		insertion_sort_step(maps, 1, callback, callbackArgs);
+	}
 }
 
 // used to prevent parallel sorts messing up the global map lists
@@ -354,7 +381,7 @@ void showFreshMaps(EHandle h_plr, int targetType, string targetName, string targ
 	};
 	
 	if (targetType == TARGET_ALL) {
-		sortMapsByFreshness(maps, getAllPlayers(), showFreshMaps_afterSort, callbackArgs);
+		sortMapsByFreshness(maps, getAllPlayers(), 0, showFreshMaps_afterSort, callbackArgs);
 	}
 	else {
 		PlayerMapHistory@ history = cast<PlayerMapHistory@>(g_player_map_history[targetId]);
@@ -414,8 +441,8 @@ void showFreshMaps_afterSort(dictionary args) {
 
 void showLastPlayedTimes(CBasePlayer@ plr, string mapname) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\nPrevious play times for \"" + mapname + "\"\n\n");
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Player                          Last played      Previous activity\n");
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "------------------------------------------------------------------\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Player                          Last played      Total Plays    Previous activity\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "---------------------------------------------------------------------------------\n");
 	
 	array<LastPlay> allPlayers;
 	
@@ -455,6 +482,7 @@ void showLastPlayedTimes(CBasePlayer@ plr, string mapname) {
 		
 		MapStat@ stat = history.stats.get(mapname, hashKey);
 		allPlayers[c].last_played = stat.last_played;
+		allPlayers[c].total_plays = stat.total_plays;
 	}
 	
 	allPlayers.sort(function(a,b) { return a.last_played < b.last_played; });
@@ -490,10 +518,19 @@ void showLastPlayedTimes(CBasePlayer@ plr, string mapname) {
 			age += spad;
 		}
 		
-		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, name + age + prevPlay + "\n");
+		string totalPlays = "" + allPlayers[c].total_plays;
+		{
+			int padding = 15;
+			padding -= totalPlays.Length();
+			string spad = "";
+			for (int p = 0; p < padding; p++) spad += " ";
+			totalPlays += spad;
+		}
+		
+		g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, name + age + totalPlays + prevPlay + "\n");
 	}	
 	
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "------------------------------------------------------------------\n\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "---------------------------------------------------------------------------------\n\n");
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Previous play times are used to pick \"Next maps\" that have the highest minimum age.\n\n");
 	
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\"Previous activity\" shows the percentage of activity in the previous map (" + g_previous_map + ").\n");
@@ -512,17 +549,10 @@ array<SteamName> getActivePlayers() {
 		CBasePlayer@ plr = getPlayerById(steamid);
 		string name = plr !is null ? string(plr.pev.netname) : "???";
 		
-		bool isActiveNow = plr !is null;
-		
-		if (isActiveNow) {
-			activity.lastActivity = g_Engine.time;
-		}
-		
 		float levelTime = g_Engine.time - 60; // substract some time for loading/downloading
-		float activeTime = activity.lastActivity - activity.firstActivity;
-		float percentActive = activeTime / levelTime;
+		float percentActive = activity.totalActivity / levelTime;
 		
-		if (activeTime > levelTime || percentActive > 1.0f) {
+		if (activity.totalActivity > levelTime || percentActive > 1.0f) {
 			percentActive = 1.0f;
 		}
 		

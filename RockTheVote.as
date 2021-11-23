@@ -39,8 +39,7 @@ CClientCommand set_nextmap("set_nextmap", "Set the next map cycle", @consoleCmd)
 CClientCommand map("map", "Force a map change", @consoleCmd);
 CClientCommand vote("vote", "Start a vote or reopen the vote menu", @consoleCmd);
 CClientCommand poll("poll", "Start a custom poll", @consoleCmd);
-CClientCommand lastplay("lastplay", "Show previous play times for a map", @consoleCmd);
-CClientCommand lastplays("lastplays", "Show previous play times for a map", @consoleCmd);
+CClientCommand mapstats("mapstats", "Show previous play times for a map", @consoleCmd);
 CClientCommand recentmaps("recentmaps", "Show recently played maps", @consoleCmd);
 CClientCommand newmaps("newmaps", "Show maps that haven't been played for the longest time", @consoleCmd);
 CClientCommand mapinfo("mapinfo", "Show maps that haven't been played for the longest time", @consoleCmd);
@@ -318,7 +317,7 @@ void startVote(string reason="") {
 	}
 	
 	g_generating_rtv_list = true;
-	sortMapsByFreshness(g_randomRtvChoices, getActivePlayers(), createRtvMenu, {});
+	sortMapsByFreshness(g_randomRtvChoices, getActivePlayers(), 0, createRtvMenu, {});
 }
 
 void voteThinkCallback(MenuVote::MenuVote@ voteMenu, int secondsLeft) {
@@ -940,13 +939,15 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		}
 		else if (args[0] == ".newmaps" || args[0] == ".recentmaps") {
 			bool reverse = args[0] == ".newmaps";
+			bool cycleMapsOnly = args[1] == '\\cycle' || args[2] == '\\cycle';
+			array<SortableMap>@ maps = cycleMapsOnly ? @g_randomCycleMaps : @g_everyMap;
 
 			if (args[1].ToLowercase() == "\\all") {
 				if (shouldLaggyCmdCooldown(plr)) {
 					return 2;
 				}
 			
-				showFreshMaps(EHandle(plr), TARGET_ALL, "anyone", "STEAM_0:????", copyArray(g_everyMap), reverse);
+				showFreshMaps(EHandle(plr), TARGET_ALL, "anyone", "STEAM_0:????", copyArray(maps), reverse);
 			} else {
 				string nameUpper = args[1].ToUppercase();
 				if (nameUpper.Find("STEAM_0:") == 0) {
@@ -957,19 +958,24 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 					dictionary freshArgs = {
 						{'plr', EHandle(plr)},
 						{'steamId', nameUpper},
-						{'reverse', reverse}
+						{'reverse', reverse},
+						{'maps', maps}
 					};
 					
 					loadPlayerMapStats(nameUpper, function(args) {
 						string steamid = string(args['steamId']);
-						showFreshMaps(EHandle(args['plr']), TARGET_PLAYER, steamid, steamid, copyArray(g_everyMap), bool(args['reverse']));
+						array<SortableMap>@ maps = cast<array<SortableMap>@>(args['maps']);
+						showFreshMaps(EHandle(args['plr']), TARGET_PLAYER, steamid, steamid, copyArray(maps), bool(args['reverse']));
 					}, freshArgs);
 				} else {
 					if (shouldLaggyCmdCooldown(plr)) {
 						return 2;
 					}
 				
-					CBasePlayer@ target = nameUpper.Length() > 0 ? getPlayerByName(plr, args[1]) : plr;
+					CBasePlayer@ target = plr;
+					if (nameUpper.Length() > 0 and args[1] != '\\cycle') {
+						@target = @getPlayerByName(plr, args[1]);
+					}
 				
 					if (target !is null) {
 						string targetName = "you";
@@ -982,15 +988,22 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 							targetType = TARGET_PLAYER;
 						}
 						
-						showFreshMaps(EHandle(plr), targetType, targetName, targetId, copyArray(g_everyMap), reverse);
+						showFreshMaps(EHandle(plr), targetType, targetName, targetId, copyArray(maps), reverse);
 					}
 				}
 			}
 				
 			return 2;
 		}
-		else if (args[0] == ".lastplay" || args[0] == ".lastplays") {
-			showLastPlayedTimes(plr, args.ArgC() == 1 ? string(g_Engine.mapname) : args[1].ToLowercase());
+		else if (args[0] == ".mapstats") {
+			string mapname = args.ArgC() == 1 ? string(g_Engine.mapname) : args[1].ToLowercase();
+			
+			if (!g_EngineFuncs.IsMapValid(mapname)) {
+				g_PlayerFuncs.SayText(plr, "Map \"" + mapname + "\" does not exist!\n");
+				return 2;
+			}
+			
+			showLastPlayedTimes(plr, mapname);
 			return 2;
 		}
 		else if (args[0] == "rtv" and args.ArgC() == 1) {
@@ -1123,10 +1136,7 @@ HookReturnCode ClientJoin( CBasePlayer@ plr ) {
 	string steamid = getPlayerUniqueId(plr);
 	loadPlayerMapStats(steamid, function(args){}, {});
 	
-	if (g_player_activity.exists(steamid)) {
-		PlayerActivity@ activity = cast<PlayerActivity@>(g_player_activity[steamid]);
-		activity.lastActivity = g_Engine.time;
-	} else {
+	if (!g_player_activity.exists(steamid)) {
 		g_player_activity[steamid] = PlayerActivity();
 	}
 	
@@ -1145,11 +1155,6 @@ HookReturnCode ClientLeave(CBasePlayer@ plr) {
 		g_nomList.removeAt(g_nomList.find(state.nom));
 		g_PlayerFuncs.SayTextAll(plr, "[RTV] \"" + state.nom + "\" is no longer nominated.\n");
 		state.nom = "";
-	}
-	
-	if (g_player_activity.exists(steamid)) {
-		PlayerActivity@ activity = cast<PlayerActivity@>(g_player_activity[steamid]);
-		activity.lastActivity = g_Engine.time;		
 	}
 	
 	return HOOK_CONTINUE;

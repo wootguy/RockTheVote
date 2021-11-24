@@ -21,7 +21,7 @@ Everyone can use these commands.
 
 # Console commands
 
-Note: These commands also work in chat.
+These commands also work in chat.
 
 | Command | Admin only? | Description |
 | --- | --- | --- |
@@ -47,13 +47,13 @@ Note: These commands also work in chat.
 | forceSurvivalVotes | If set to 1, enables the Semi-Survival game vote (players respawn when everyone dies). Requires [ForceSurvival](https://github.com/wootguy/ForceSurvival) to be installed. |
 
 # Installation
-1. Download the script and save it to `scripts/plugins/RockTheVote.as`
+1. Download all the files in this repo and save them to this folder: `scripts/plugins/RockTheVote/`
 1. Add this to default_plugins.txt
 ```
     "plugin"
     {
         "name" "RockTheVote"
-        "script" "RockTheVote"
+        "script" "RockTheVote/RockTheVote"
         "concommandns" "rtv"
     }
 ```

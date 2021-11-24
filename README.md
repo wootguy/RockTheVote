@@ -1,8 +1,8 @@
 # RockTheVote
-A rewrite of the [RockTheVote plugin by MrOats](https://github.com/MrOats/AngelScript_SC_Plugins/wiki/RockTheVote.as), with features from the RandomNextMap plugin by takedeppo, and some other new features.  
+A rewrite of the [RockTheVote plugin by MrOats](https://github.com/MrOats/AngelScript_SC_Plugins/wiki/RockTheVote.as), with new features.  
 
 
-This plugin will choose rarely played map cycle maps as the next map, depending on who is in the server. Maps also have cooldowns before they can be nominated again to prevent overplaying them. There are also text-menu alternatives to the built-in game votes. These are much less annoying as they don't take control of your mouse.
+This plugin will choose rarely played maps as the next map and as RTV menu options, depending on who is in the server. Maps also have cooldowns before they can be nominated again to prevent overplaying them. There are also text-menu alternatives to the built-in game votes. These are much less annoying as they don't take control of your mouse.
 
 # Chat commands
 
@@ -73,5 +73,20 @@ Maps listed here can be nominated with the normal cooldown (`NormalMapCooldown`)
 1. Create the hidden map list file: `scripts/plugins/cfg/hidden_nom_maps.txt`  
 Maps listed here have a large nom cooldown (`MemeMapCooldown`) and never randomly show up in the vote menu or as the next map.
 1. Install Python 3 and run `db_setup.py`. This will create the folders needed to track player map stats. If you don't do this, the map cycle will be random instead of based on previous map play times of the players currently in the server.
-1. **[Optional]** Run `series_maps.py` to update series_maps.txt. Then, check the file to undo/fix any bad series maps detections. Use something like TortoiseDiff to compare the before/after files. If you don't follow this step, the `series?` command may not work properly, as well as map cooldowns for map series.
+1. **[Optional]** Run `series_maps.py` to update series_maps.txt. Then, check the file to undo/fix any bad series maps detections. Use something like TortoiseDiff to compare the before/after files. If you don't follow this step, the `series?` command may not work properly, as well as map cooldowns for map series. The file included here is accurate for the TWLZ server but maybe not yours.
 3. **[Optional]** Install the [ForceSurvival](https://github.com/wootguy/ForceSurvival) plugin if you want to enable `forceSurvivalVotes`.
+
+## Keeping up-to-date
+There are 4 map lists that are used by this plugin:
+1. `mapcycle.txt` - This is the default map cycle file. This file is used to select the "Next map".
+2. `scripts/plugins/cfg/mapvote.txt` - This is a new file which lists votable maps, except for maps you don't want anyone to play normally. It can be a copy of the default `mapvote.cfg` file or symlinked to it.
+3. `scripts/plugins/cfg/hidden_nom_maps.txt` - This is a new file which holds votable maps which should only rarely be played because they're really bad or overplayed and you question why they're on the server at all.
+4. `scripts/plugins/RockTheVote/series_maps.txt` - This file lists all map series. Each line represents an ordered list of maps in a single series.
+
+As you add new maps, you'll need to decide which lists to put them in.
+- Is the map good? Add it to **both** the mapcycle.txt and mapvote.txt
+- Is the map kinda bad? Add it to mapvote.txt.
+- Is the map garbage? Add it to hidden_nom_maps.txt.
+- Is the map a series? Add it to series_maps.txt as well.
+
+Check the angelscript logs for [RTV] messages. You'll see warnings about maps being in the wrong combination of lists, if you messed that up.

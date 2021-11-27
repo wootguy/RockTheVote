@@ -308,7 +308,11 @@ void createRtvMenu(dictionary args) {
 }
 
 void startVote(string reason="") {
+	
 	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] Vote starting! " + reason + "\n");
+	if (g_gameVote.status != MVOTE_NOT_STARTED) {
+		g_gameVote.cancel();
+	}
 	
 	if (g_randomRtvChoices.size() == 0) {
 		g_Log.PrintF("[RTV] All maps are excluded by the previous map list! Make sure g_ExcludePrevMaps value is less than the total nommable maps.\n");
@@ -1085,7 +1089,9 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			
 			game_end(nextmap);
 			
-			g_PlayerFuncs.SayTextAll(plr, "" + plr.pev.netname + " changed map to: " + nextmap + "\n");
+			string msg = "" + plr.pev.netname + " changed map to: " + nextmap + "\n";
+			g_PlayerFuncs.SayTextAll(plr, msg);
+			g_Log.PrintF(msg);
 			
 			return 2;
 		}
@@ -1110,7 +1116,9 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 				g_PlayerFuncs.SayText(plr, old + " is already set as the next map!\n");
 			} else {
 				g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + nextmap + "\n");
-				g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "" + plr.pev.netname + " changed the next map: " + old + " -> " + nextmap + "\n");
+				string msg = "" + plr.pev.netname + " changed the next map: " + old + " -> " + nextmap + "\n";
+				g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, msg);
+				g_Log.PrintF(msg);
 			}
 			
 			return 2;

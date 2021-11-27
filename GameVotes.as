@@ -386,7 +386,7 @@ void openVoteKillMenu(EHandle h_plr) {
 }
 
 bool tryStartGameVote(CBasePlayer@ plr) {
-	if (g_rtvVote.status != MVOTE_NOT_STARTED or g_gameVote.status == MVOTE_IN_PROGRESS) {
+	if (g_rtvVote.status != MVOTE_NOT_STARTED or g_gameVote.status == MVOTE_IN_PROGRESS or g_generating_rtv_list) {
 		g_PlayerFuncs.SayText(plr, "[Vote] Another vote is already in progress.\n");
 		return false;
 	}

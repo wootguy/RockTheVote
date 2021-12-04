@@ -218,6 +218,7 @@ void game_end(string nextMap) {
 	g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + nextMap + "\n");
 	CBaseEntity@ endEnt = g_EntityFuncs.CreateEntity("game_end");
 	endEnt.Use(null, null, USE_TOGGLE);
+	g_Log.PrintF("level change to " + nextMap + "\n");
 }
 
 
@@ -274,8 +275,14 @@ void createRtvMenu(dictionary args) {
 		rtvList.insertLast(g_nomList[i]);
 	}
 	
+	uint maxMenuItems = Math.min(g_MaxMapsToVote.GetInt(), 8);
+	
+	if (rtvList.size() < maxMenuItems) {
+		rtvList.insertLast(g_MapCycle.GetNextMap());
+	}
+	
 	for (uint failsafe = 0; failsafe < g_randomRtvChoices.size(); failsafe++) {	
-		if (int(rtvList.size()) >= g_MaxMapsToVote.GetInt() or int(rtvList.size()) >= 8) {
+		if (rtvList.size() >= maxMenuItems) {
 			break;
 		}
 		
@@ -362,6 +369,7 @@ void reset_failsafe() {
 	g_playerStates.resize(0);
 	g_playerStates.resize(33);
 	g_nomList.resize(0);
+	g_generating_rtv_list = false;
 }
 
 void mapChosenCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, CBasePlayer@ plr) {
@@ -693,6 +701,7 @@ array<string> loadMapList(string path, bool ignoreDuplicates=false) {
 			} else {
 				mapname = parts[0].ToLowercase();
 			}
+			mapname.Trim(); // TODO: doesn't work on linux for some reason. Tabs are not stripped. Replacing tabs also doesn't work.
 			
 			if (!ignoreDuplicates && unique.exists(mapname)) {
 				g_Log.PrintF("[RTV] duplicate map " + mapname + " in list: " + path + "\n");
@@ -740,10 +749,16 @@ void loadSeriesMaps() {
 				sortableMaps.insertLast(SortableMap(maps[i]));
 			}
 
+			bool foundAnyVotable = false;
 			for (uint i = 0; i < maps.size(); i++) {
 				if (g_everyMapHashed.exists(maps[i])) {
 					g_seriesMaps[maps[i]] = sortableMaps;
+					foundAnyVotable = true;
 				}
+			}
+			
+			if (!foundAnyVotable) {
+				g_seriesMaps[maps[0]] = sortableMaps;
 			}
 		}
 

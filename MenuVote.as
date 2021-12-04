@@ -286,6 +286,9 @@ class MenuVote {
 	}
 	
 	void reopen(CBasePlayer@ plr) {
+		if (plr is null) {
+			return;
+		}
 		g_menus[plr.entindex()].Open(0, 0, plr);
 		playerWatching[plr.entindex()] = true;
 	}

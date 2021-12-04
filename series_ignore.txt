@@ -18,7 +18,7 @@ sc_votemap2
 singleplayermaps
 yoshinoya
 theater
-escape_series
+afraidofmonsters_lobby
 
 // maps trying to take control of the map cycle
 cryocity4

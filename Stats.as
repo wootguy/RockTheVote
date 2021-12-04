@@ -292,7 +292,14 @@ void shuffle(array<SortableMap>@ arr) {
 // sorts according to minimum play time of all players in the server
 void sortMapsByFreshness(array<SortableMap>@ maps, array<SteamName>@ activePlayers, uint pidx, dict_callback@ callback, dictionary callbackArgs) {
 	if (activePlayers.size() == 0) {
-		return;
+		g_Log.PrintF("[RTV] No one was active in the previous map. Using current players to sort maps by freshness.\n");
+		activePlayers = getAllPlayers();
+		
+		if (activePlayers.size() == 0) {
+			g_Log.PrintF("[RTV] No one is in the server. Skipping map sort.\n");
+			callback(callbackArgs);
+			return;
+		}
 	}
 	
 	for (uint k = 0; k < maps.size(); k++) {
@@ -547,7 +554,7 @@ array<SteamName> getActivePlayers() {
 		string steamid = idKeys[i];
 		PlayerActivity@ activity = cast<PlayerActivity@>(g_player_activity[steamid]);
 		CBasePlayer@ plr = getPlayerById(steamid);
-		string name = plr !is null ? string(plr.pev.netname) : "???";
+		string name = plr !is null ? string(plr.pev.netname) : "\\disconnected\\";
 		
 		float levelTime = g_Engine.time - 60; // substract some time for loading/downloading
 		float percentActive = activity.totalActivity / levelTime;

@@ -92,7 +92,7 @@ instinct_1 instinct_2 instinct_3 instinct_4 instinct_5 instinct_6 instinct_7 ins
 it1 it2 it3 it4 it5 it6 it7 it8 it9 it10 it11
 jail_escape_1 jail_escape_2 jail_escape_3
 jailbreak jailbreak2
-kasino1_v2 kasino2 kasino3 kasino4 kasino5
+kasino1_v2 kasino2 kasino3 kasino4
 keen_birthday_part1_beta kbdp2a
 keksvencoop1 keksvencoop2
 kermit_escape_tfc_r2 kermit_escape_tfc_r2_pt2
@@ -101,6 +101,7 @@ kyperkuutio_final kyperkuutio2_final kyperkuutio3_final
 last last2 last3 last4
 lastunic_1 lastunic_2 lastunic_3 lastunic_4 lastunic_5 lastunic_6 lastunic_7 lastunic_8
 legends legends_p01 legends_p02 legends_p03 legends_p04 legends_p05 legends_p06 legends_p07 legends_p08 legends_p09 legends_p10 legends_the_end lol_arena
+leprechaun leprechaun2 leprechaun3 leprechaun3-2
 lostresource1 lostresource2
 mansion_ha tob_ha
 marioland1 marioland2 marioland3
@@ -148,10 +149,12 @@ rhapsody_b1_1 rhapsody_b2_1 rhapsody3_beta1
 rk00 rl00r rl00t rl00u rl00s rl00a rl00 rl01 rl01a rl02 rl02w rl02y rl02o rl02p rl02l rl02n rl02d rl02c rl02e rl02t rl02c_2 rl02i rl02m rl02i_2 rl02h rl02k rl02j rl02r
 rl_mselect rl_00r1 rl_00t1 rl_00u1 rl_00s1 rl_00a7 rl_009 rl_010 rl_01a1 rl_01f rl_01j rl_01k rl_01p rl_01r rl_01q rl_01t rl_01z rl_02 rl_02w rl_02y rl_02o rl_02u3a rl_02p rl_02l2 rl_02l3 rl_02d rl_02c rl_02e rl_02t2 rl_02f rl_02i rl_02l rl_02h2 rl_02z rl_02b rl_02j rl_02x rl_02v rl_02j2 rl_02r2 rl_02k rl_02k3 rl_02q rl_02k2 rl_02k0 rl_02u1 rl_01e rl_02u2 rl_02u3 rl_02u5 rl_02u4 rl_02a1 rl_02a2 rl_02a3 rl_02a4 rl_02a5 rl_02a6 rl_02s rl_02g0 rl_02s2 rl_02u3s rl_02z1 rl_02u3z rl_02u3t rl_02u3m rl_02z2 rl_02u3x rl_02z3_dusk rl_02u3w rl_02u3l rl_02u3p rl_02z3 rl_02z2_dusk rl_02u3v rl_02u3h rl_02z4 rl_02z6 rl_02z5_dusk rl_02u3k rl_02u3o rl_02l9 rl_02u3u rl_02u3b rl_02u3c rl_02u3ermapkeen02 rmapkeen01
 rmapkeen02 rmapkeen01
+rp_c00_m1 rp_c00_m2 rp_c00_m3 rp_c00_m4 rp_c00_m5 rp_c01 rp_c02 rp_c00_m7 rp_c03_m1 rp_c01_m3 rp_c03_m2 rp_c04 rp_c05 rp_c06 rp_c07_m1 rp_c06_pump rp_c07_m2surface rp_c07_m2sewer rp_c08_m1surface rp_c08_m1sewer rp_c08_m2surface rp_c08_m2sewer rp_c08_m3surface rp_c08_m3sewer rp_c08_m4 rp_c08_m4sewer rp_c09_m1 rp_c09_m2 rp_c09_m3 rp_c10_m1 rp_c10_m2 rp_c10_m3 rp_c11 rp_c12_m1 rp_c12_m2 rp_c12_m3 rp_c13_m1 rp_c13_m2b rp_c13_m3b rp_c13_m2a rp_c13_m3a rp_c13_m4
 ruosteb3 ruoste2b3 ruoste3b3
 sa13 sa13a sa13b sa13c sa13d sa13e sa13f sa13g sa13h sa13i sa13j sa13end sa13canal sa13snow sa13ecolo sa13gth sa13panchem
 sa13_1 sa13_2 sa13_3 sa13_4 sa13_5 sa13_6 sa13_7 sa13_8 sa13_9 sa13_10 sa13_11 sa13_12 sa13_13 sa13_14 sa13_15 sa13_16 sa13_17
 savesven savesven2 savesven3 savesven4
+sc_activist sc_activist2 sc_activist3
 sc_argentina2 sc_argentina3
 sc_argentina_series sc_argentina_series2 sc_argentina_series3 sc_argentina_series4 sc_argentina_series4b sc_argentina_series4c sc_argentina_series5 sc_argentina_series5b
 sc_avp sc_avp2 sc_avp3 sc_avp4 sc_avp5 sc_avp6 sc_avp7 sc_avp8 sc_avp9 sc_avp10_b2
@@ -171,6 +174,7 @@ sc_lost_atoll_xn_part01 sc_lost_atoll_xn_part02 sc_lost_atoll_xn_part03
 sc_outpost_v2 sc_outpost_v2_2
 sc_propanic_part_1 sc_propanic_part_2
 sc_redfang sc_redfang2
+sc_royals1 sc_royals2 sc_royals3 sc_royals4
 sc_russia1 sc_russia2 sc_russia3
 sc_shogo_b sc_shogo_c
 sc_spaceviking1 sc_spaceviking2

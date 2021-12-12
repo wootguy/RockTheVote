@@ -122,7 +122,13 @@ void MapInit() {
 	
 	reset();
 	
-	setFreshMapAsNextMap(g_randomCycleMaps); // something most haven't played in the longest time
+	string nextSeriesMap = getNextSeriesMap();
+	if (nextSeriesMap.Length() > 0 ) {
+		g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + nextSeriesMap + "\n");
+	} else {
+		setFreshMapAsNextMap(g_randomCycleMaps); // something most haven't played in the longest time
+	}
+	
 }
 
 HookReturnCode MapChange() {
@@ -175,7 +181,7 @@ void autoStartRtvCheck() {
 	loadCrossPluginAfkState();
 
 	if (canAutoStartRtv()) {
-		startVote("(vote requirement lowered to " + getRequiredRtvCount() + " due to leaving/AFK players)");
+		startVote("(vote requirement lowered due to leaving/AFK players)");
 	}
 }
 
@@ -218,7 +224,7 @@ void game_end(string nextMap) {
 	g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + nextMap + "\n");
 	CBaseEntity@ endEnt = g_EntityFuncs.CreateEntity("game_end");
 	endEnt.Use(null, null, USE_TOGGLE);
-	g_Log.PrintF("level change to " + nextMap + "\n");
+	g_Log.PrintF("[RTV] level change to " + nextMap + "\n");
 }
 
 
@@ -277,7 +283,7 @@ void createRtvMenu(dictionary args) {
 	
 	uint maxMenuItems = Math.min(g_MaxMapsToVote.GetInt(), 8);
 	
-	if (rtvList.size() < maxMenuItems) {
+	if (rtvList.size() < maxMenuItems and g_nomList.find(g_MapCycle.GetNextMap()) == -1) {
 		rtvList.insertLast(g_MapCycle.GetNextMap());
 	}
 	
@@ -314,6 +320,46 @@ void createRtvMenu(dictionary args) {
 	g_rtvVote.start(voteParams, null);
 }
 
+void disable_level_changes() {
+	// TODO: this will break if a once-only trigger is activated during rtv and then rtv is cancelled or fails.
+	
+	CBaseEntity@ ent = null;
+	do {
+		@ent = g_EntityFuncs.FindEntityByClassname(ent, "trigger_changelevel");
+		if (ent !is null) {
+			ent.pev.solid = SOLID_NOT;
+		}
+	} while (ent !is null);
+	
+	@ent = null;
+	do {
+		@ent = g_EntityFuncs.FindEntityByClassname(ent, "game_end");
+		if (ent !is null) {
+			ent.pev.targetname = "RTV_" + ent.pev.targetname;
+		}
+	} while (ent !is null);
+}
+
+void enable_level_changes() {
+	CBaseEntity@ ent = null;
+	do {
+		@ent = g_EntityFuncs.FindEntityByClassname(ent, "trigger_changelevel");
+		if (ent !is null) {
+			ent.pev.solid = SOLID_TRIGGER;
+		}
+	} while (ent !is null);
+	
+	@ent = null;
+	do {
+		@ent = g_EntityFuncs.FindEntityByClassname(ent, "game_end");
+		if (ent !is null) {
+			if (string(ent.pev.targetname).Find("RTV_") == 0) {
+				ent.pev.targetname = string(ent.pev.targetname).SubString(4);
+			}
+		}
+	} while (ent !is null);
+}
+
 void startVote(string reason="") {
 	
 	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] Vote starting! " + reason + "\n");
@@ -328,6 +374,7 @@ void startVote(string reason="") {
 	}
 	
 	g_generating_rtv_list = true;
+	disable_level_changes();
 	sortMapsByFreshness(g_randomRtvChoices, getActivePlayers(), 0, createRtvMenu, {});
 }
 
@@ -390,7 +437,11 @@ int tryRtv(CBasePlayer@ plr) {
 		return 1;
 	}
 	
-	if (g_rtvVote.status == MVOTE_IN_PROGRESS || g_generating_rtv_list) {
+	if (g_generating_rtv_list) {
+		return 2;
+	}
+	
+	if (g_rtvVote.status == MVOTE_IN_PROGRESS) {
 		g_rtvVote.reopen(plr);
 		return 2;
 	}
@@ -442,6 +493,7 @@ void cancelRtv(CBasePlayer@ plr) {
 	}
 	
 	g_rtvVote.cancel();
+	enable_level_changes();
 	
 	g_PlayerFuncs.SayTextAll(plr, "[RTV] Vote cancelled by " + plr.pev.netname + "!\n");
 }
@@ -819,6 +871,41 @@ void loadAllMapLists() {
 	loadSeriesMaps();
 
 	g_everyMap.sort(function(a,b) { return a.map.Compare(b.map) < 0; });
+}
+
+array<SortableMap>@ getMapSeriesMaps() {
+	string mapname = string(g_Engine.mapname).ToLowercase();
+	
+	array<string>@ mapKeys = g_seriesMaps.getKeys();
+	for (uint i = 0; i < mapKeys.length(); i++) {
+		array<SortableMap>@ maps = cast<array<SortableMap>@>(g_seriesMaps[mapKeys[i]]);
+		
+		for (uint k = 0; k < maps.size(); k++) {
+			if (maps[k].map == mapname) {
+				return maps;
+			}
+		}
+	}
+	
+	return null;
+}
+
+string getNextSeriesMap() {
+	string mapname = string(g_Engine.mapname).ToLowercase();
+	array<SortableMap>@ maps = getMapSeriesMaps();
+	
+	if (maps !is null) {
+		for (uint i = 0; i < maps.size(); i++) {
+			if (maps[i].map == mapname) {
+				if (i + 1 >= maps.size()) {
+					return "";
+				}
+				return maps[i+1].map;
+			}
+		}
+	}
+	
+	return "";
 }
 
 // return the first map in the series, if the current map is a series map

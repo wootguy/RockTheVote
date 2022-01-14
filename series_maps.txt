@@ -53,9 +53,12 @@ doom2_ep1_b7 doom2_ep2_b7
 dy_accident1 dy_accident2 dy_hazard dy_uplink dy_dampen dy_dorms dy_signal dy_focus dy_lasers dy_fubar dy_outro dy_alien
 e0a e0b e1a e1c e1d e1e e1f e1g e1h e2a e2b e1j
 echoes00 echoes01 echoes01a echoes02 echoes03 echoes04 echoes05 echoes06 echoes07 echoes08 echoes09 echoes09a echoes09b echoes10 echoes11 echoes12 echoes13 echoes14 echoes14b echoes15 echoes16 echoes17 echoes18 echoes19 echoes20 echoes21 echoes22 echoes23 echoes24
+echoes-0 echoes-1 echoes-2 echoes-3 echoes-4 echoes-5 echoes-6 echoes-7 echoes-8 echoes-9 echoes-10 echoes-11 echoes-12 echoes-13 echoes-14
 enc1 enc2 enc3
 es_01 es_02 es_03
 escape_series escape_series_1a escape_series_1b escape_series_2a escape_series_2b escape_series_2c escape_series_2d escape_series_2e escape_series_3a escape_series_3b escape_series_3c escape_series_3d escape_series_3e
+etc etc0b etc0b2 etc0c2 etc0c etc0d etc0e
+etc2_1 etc2_2 etc2_3 etc2_4 etc2_5
 etf_1 etf_2 etf_3 fresco2
 evasion1 evasion2 evasion3 evasion4 evasion5 evasion6
 evasion_1 evasion_2
@@ -68,6 +71,8 @@ g-ara1 g-ara2 g-ara3 g-ara4 g-ara5
 garage hospital2 backalley
 gitfest1g gitfest2g gitfest3g gitfest4g gitfest5g gitfest6g
 gitfest2_1 gitfest3g gitfest4g gitfest5g gitfest6g
+godzilla godzilla2 godzilla3 godzilla4
+grunts grunts2
 gut_reaction gr_generate gr_lab gr_tunnel3 gr_corentry gr_coremain gr_drainage gr_coremain2 gr_reactors gr_finale
 gut_reaction1 gut_reaction2
 gut_reaction1_v2 gut_reaction2_v2
@@ -87,8 +92,10 @@ hostage2a hostage2b hostage2c
 hotline_p0a0 hotline_p1a1 hotline_p1a2 hotline_p1a3
 hq hq2
 htc_c01 htc_c02 htc_c03 hunt1 htc_c04 hunt3 htc_c05 choose_campaign_v4
+infested infested2
 insertion insertion2 insertion3 insertion4 insertion5
 instinct_1 instinct_2 instinct_3 instinct_4 instinct_5 instinct_6 instinct_7 instinct_8 instinct_9 instinct_10
+invasion invasion2 invasion3 invasion4
 it1 it2 it3 it4 it5 it6 it7 it8 it9 it10 it11
 jail_escape_1 jail_escape_2 jail_escape_3
 jailbreak jailbreak2
@@ -149,7 +156,7 @@ rhapsody_b1_1 rhapsody_b2_1 rhapsody3_beta1
 rk00 rl00r rl00t rl00u rl00s rl00a rl00 rl01 rl01a rl02 rl02w rl02y rl02o rl02p rl02l rl02n rl02d rl02c rl02e rl02t rl02c_2 rl02i rl02m rl02i_2 rl02h rl02k rl02j rl02r
 rl_mselect rl_00r1 rl_00t1 rl_00u1 rl_00s1 rl_00a7 rl_009 rl_010 rl_01a1 rl_01f rl_01j rl_01k rl_01p rl_01r rl_01q rl_01t rl_01z rl_02 rl_02w rl_02y rl_02o rl_02u3a rl_02p rl_02l2 rl_02l3 rl_02d rl_02c rl_02e rl_02t2 rl_02f rl_02i rl_02l rl_02h2 rl_02z rl_02b rl_02j rl_02x rl_02v rl_02j2 rl_02r2 rl_02k rl_02k3 rl_02q rl_02k2 rl_02k0 rl_02u1 rl_01e rl_02u2 rl_02u3 rl_02u5 rl_02u4 rl_02a1 rl_02a2 rl_02a3 rl_02a4 rl_02a5 rl_02a6 rl_02s rl_02g0 rl_02s2 rl_02u3s rl_02z1 rl_02u3z rl_02u3t rl_02u3m rl_02z2 rl_02u3x rl_02z3_dusk rl_02u3w rl_02u3l rl_02u3p rl_02z3 rl_02z2_dusk rl_02u3v rl_02u3h rl_02z4 rl_02z6 rl_02z5_dusk rl_02u3k rl_02u3o rl_02l9 rl_02u3u rl_02u3b rl_02u3c rl_02u3ermapkeen02 rmapkeen01
 rmapkeen02 rmapkeen01
-rp_c00_m1 rp_c00_m2 rp_c00_m3 rp_c00_m4 rp_c00_m5 rp_c01 rp_c02 rp_c00_m7 rp_c03_m1 rp_c01_m3 rp_c03_m2 rp_c04 rp_c05 rp_c06 rp_c07_m1 rp_c06_pump rp_c07_m2surface rp_c07_m2sewer rp_c08_m1surface rp_c08_m1sewer rp_c08_m2surface rp_c08_m2sewer rp_c08_m3surface rp_c08_m3sewer rp_c08_m4 rp_c08_m4sewer rp_c09_m1 rp_c09_m2 rp_c09_m3 rp_c10_m1 rp_c10_m2 rp_c10_m3 rp_c11 rp_c12_m1 rp_c12_m2 rp_c12_m3 rp_c13_m1 rp_c13_m2b rp_c13_m3b rp_c13_m2a rp_c13_m3a rp_c13_m4
+rp_c00_m1 rp_c00_m2 rp_c00_m3 rp_c00_m4 rp_c00_m5 rp_c01 rp_c02 rp_c00_m7 rp_c03_m1 rp_c01_m3 rp_c03_m2 rp_c04 rp_c05 rp_c06 rp_c07_m1 rp_c06_pump rp_c07_m2surface rp_c07_m2sewer rp_c08_m1surface rp_c08_m1sewer rp_c08_m2surface rp_c08_m2sewer rp_c08_m3surface rp_c08_m3 rp_c08_m4 rp_c09_m1 rp_c09_m2 rp_c09_m3 rp_c10_m1 rp_c10_m2 rp_c10_m3 rp_c11 rp_c12_m1 rp_c12_m2 rp_c12_m3 rp_c13_m1 rp_c13_m2b rp_c13_m3b rp_c13_m2a rp_c13_m3a rp_c13_m4 rp_c14
 ruosteb3 ruoste2b3 ruoste3b3
 sa13 sa13a sa13b sa13c sa13d sa13e sa13f sa13g sa13h sa13i sa13j sa13end sa13canal sa13snow sa13ecolo sa13gth sa13panchem
 sa13_1 sa13_2 sa13_3 sa13_4 sa13_5 sa13_6 sa13_7 sa13_8 sa13_9 sa13_10 sa13_11 sa13_12 sa13_13 sa13_14 sa13_15 sa13_16 sa13_17
@@ -177,6 +184,7 @@ sc_redfang sc_redfang2
 sc_royals1 sc_royals2 sc_royals3 sc_royals4
 sc_russia1 sc_russia2 sc_russia3
 sc_shogo_b sc_shogo_c
+sc_snowadventure sc_snowadventure_2
 sc_spaceviking1 sc_spaceviking2
 sc_strangers sc_strangers2 sc_strangers3 sc_strangers4
 sc_tbreakdance1 sc_tbreakdance2

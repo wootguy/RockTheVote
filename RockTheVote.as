@@ -1117,12 +1117,13 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		else if (args[0] == "rtv" and args.ArgC() == 1) {
 			return tryRtv(plr);
 		}
-		else if (args[0] == "nom" || args[0] == "nominate") {
+		else if (args[0] == "nom" || args[0] == "nominate" || args[0] == ".nom" || args[0] == ".nominate") {
 			string mapname = args.ArgC() >= 2 ? args[1].ToLowercase() : "";
 			tryNominate(plr, mapname);
 			return 2;
 		}
-		else if (args[0] == "unnom" || args[0] == "unom" || args[0] == "denom") {
+		else if (args[0] == "unnom" || args[0] == "unom" || args[0] == "denom" ||
+				 args[0] == ".unnom" || args[0] == ".unom" || args[0] == ".denom") {
 			RtvState@ state = g_playerStates[plr.entindex()];
 			if (g_rtvVote.status != MVOTE_NOT_STARTED || g_generating_rtv_list) {
 				g_PlayerFuncs.SayText(plr, "[RTV] Too late for that now!\n");
@@ -1136,7 +1137,8 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			}
 			return 2;
 		}
-		else if (args[0] == "listnom" || args[0] == "nomlist" || args[0] == "lnom" || args[0] == "noms") {
+		else if (args[0] == "listnom" || args[0] == "nomlist" || args[0] == "lnom" || args[0] == "noms" ||
+				 args[0] == ".listnom" || args[0] == ".nomlist" || args[0] == ".lnom" || args[0] == ".noms") {
 			if (g_nomList.size() > 0) {
 				string msg = "[RTV] Current nominations: ";
 				
@@ -1151,7 +1153,7 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			
 			return 2;
 		}
-		else if (args[0] == "maplist" || args[0] == "listmaps") {
+		else if (args[0] == "maplist" || args[0] == "listmaps" || args[0] == ".maplist" || args[0] == ".listmaps") {
 			sendMapList(plr);
 			return 2;
 		}

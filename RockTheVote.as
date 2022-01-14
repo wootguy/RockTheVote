@@ -52,6 +52,7 @@ CCVar@ g_NormalMapCooldown;
 CCVar@ g_MemeMapCooldown;
 CCVar@ g_EnableGameVotes;			// enable text menu replacements for the default game votes
 CCVar@ g_EnableForceSurvivalVotes;	// enable semi-survival vote (requires ForceSurvival plugin)
+CCVar@ g_EnableRestartVotes;
 
 // maps that can be nominated with a normal cooldown
 const string votelistFile = "scripts/plugins/cfg/mapvote.txt"; 
@@ -101,6 +102,7 @@ void PluginInit() {
 	@g_MemeMapCooldown = CCVar("MemeMapCooldown", 24*30, "Time in hours before a meme map can be nommed again", ConCommandFlag::AdminOnly);
 	@g_EnableGameVotes = CCVar("gameVotes", 1, "Text menu replacements for the default game votes", ConCommandFlag::AdminOnly);
 	@g_EnableForceSurvivalVotes = CCVar("forceSurvivalVotes", 0, "Enable semi-survival vote (requires ForceSurvival plugin)", ConCommandFlag::AdminOnly);
+	@g_EnableRestartVotes = CCVar("restartVotes", 0, "Enable map restart votes", ConCommandFlag::AdminOnly);
 
 	reset();
 	

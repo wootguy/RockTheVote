@@ -45,6 +45,7 @@ These commands also work in chat.
 | MemeMapCooldown | Time in hours before a map in hidden_nom_maps.txt can be nominated again. |
 | gameVotes | If set to 1, enables the `.vote` command to replace the built-in game votes. Currently only killing and survival mode votes are supported. |
 | forceSurvivalVotes | If set to 1, enables the Semi-Survival game vote (players respawn when everyone dies). Requires [ForceSurvival](https://github.com/wootguy/ForceSurvival) to be installed. |
+| restartVotes | If set to 1, enables map restart votes. |
 
 # Installation
 1. Download all the files in this repo and save them to this folder: `scripts/plugins/RockTheVote/`

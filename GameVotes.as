@@ -131,10 +131,36 @@ void voteKillFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOpti
 	if (chosenOption.label == "No") {
 		int required = int(g_EngineFuncs.CVarGetFloat("mp_votekillrequired"));
 		int got = voteMenu.getOptionVotePercent("Yes");
-		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to kill \"" + name + "\" failed " + yesVoteFailStr(got, required) + ".\n");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to kill " + name + " failed " + yesVoteFailStr(got, required) + ".\n");
 		voterState.handleVoteFail();
 	} else {
 		string steamId = parts[0];
+		
+		if (steamId == "everyone") {
+			int deadCount = 0;
+			
+			for ( int i = 1; i <= g_Engine.maxClients; i++ ) {
+				CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
+				
+				if (plr is null or !plr.IsConnected()) {
+					continue;
+				}
+
+				if (plr.IsAlive()) {
+					g_EntityFuncs.Remove(plr);
+					deadCount += 1;
+				}
+			}
+			
+			if (deadCount == 1) {
+				g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote killing 1 player.\n");
+			} else {
+				g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote killing " + deadCount + " players.\n");
+			}
+	
+			return;
+		}
+		
 		CBasePlayer@ target = findPlayer(steamId);
 		PlayerVoteState@ victimState = getPlayerVoteState(steamId);
 		
@@ -157,7 +183,7 @@ void voteKillFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOpti
 		}
 		
 		voterState.handleVoteSuccess();
-		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote killing \"" + name + "\" for " + timeStr + ".\n");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote killing " + name + " for " + timeStr + ".\n");
 		keep_votekilled_player_dead(steamId, name, DateTime(), killTime);
 		victimState.killedCount += 1;
 	}
@@ -167,7 +193,7 @@ void keep_votekilled_player_dead(string targetId, string targetName, DateTime ki
 	int diff = int(TimeDifference(DateTime(), killTime).GetTimeDifference());
 	
 	if (diff > killDuration) {
-		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Votekill expired for \"" + targetName + "\".\n");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Votekill expired for " + targetName + ".\n");
 		return;
 	}
 	
@@ -330,7 +356,8 @@ void openGameVoteMenu(CBasePlayer@ plr) {
 		g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Disable survival " + survReq + "\\y", any("survival"));
 	}
 	
-	g_menus[eidx].AddItem((g_SurvivalMode.IsActive() ? "\\w" : "\\r") + "Restart map " + restartReq + "\\y", any("restartmap"));
+	if (g_EnableRestartVotes.GetInt() != 0)
+		g_menus[eidx].AddItem("\\wRestart map " + restartReq + "\\y", any("restartmap"));
 	
 	if (!(g_menus[eidx].IsRegistered()))
 		g_menus[eidx].Register();
@@ -374,6 +401,8 @@ void openVoteKillMenu(EHandle h_plr) {
 	
 	@g_menus[eidx] = CTextMenu(@voteKillMenuCallback);
 	g_menus[eidx].SetTitle("\\yKill who?   ");
+	
+	g_menus[eidx].AddItem("\\rEveryone" + "\\y", any("\\everyone\\"));
 	
 	for (uint i = 0; i < targets.size(); i++) {
 		g_menus[eidx].AddItem(targets[i].label + "\\y", any(targets[i].value));
@@ -443,20 +472,36 @@ void tryStartVotekill(EHandle h_plr, string uniqueId) {
 	
 	CBasePlayer@ target = findPlayer(uniqueId);
 	
-	if (target is null) {
-		g_PlayerFuncs.SayTextAll(plr, "[Vote] Player not found.\n");
-		return;
-	}	
+	bool isEveryone = uniqueId == "\\everyone\\";
 	
 	array<MenuOption> options = {
-		MenuOption("Yes", uniqueId + "\\" + target.pev.netname),
-		MenuOption("No", uniqueId + "\\" + target.pev.netname),
+		MenuOption("Yes"),
+		MenuOption("No"),
 		MenuOption("\\d(exit)")
 	};
 	options[2].isVotable = false;
 	
+	string targetName;
+	
+	if (isEveryone) {
+		options[0].value = "everyone\\everyone";
+		options[1].value = options[0].value;
+		
+		targetName = "everyone";
+	} else {
+		if (target is null) {
+			g_PlayerFuncs.SayTextAll(plr, "[Vote] Player not found.\n");
+			return;
+		}	
+		
+		options[0].value = uniqueId + "\\\"" + target.pev.netname + "\"";
+		options[1].value = options[0].value;
+		
+		targetName = "\"" + target.pev.netname + "\"";
+	}
+	
 	MenuVoteParams voteParams;
-	voteParams.title = "Kill \"" + target.pev.netname + "\"?";
+	voteParams.title = "Kill " + targetName + "?";
 	voteParams.options = options;
 	voteParams.percentFailOption = options[1];
 	voteParams.voteTime = int(g_EngineFuncs.CVarGetFloat("mp_votetimecheck"));
@@ -467,7 +512,7 @@ void tryStartVotekill(EHandle h_plr, string uniqueId) {
 	
 	g_lastVoteStarter = getPlayerUniqueId(plr);
 	
-	g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to kill \"" + target.pev.netname + "\" started by \"" + plr.pev.netname + "\".\n");
+	g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to kill " + targetName + " started by \"" + plr.pev.netname + "\".\n");
 	
 	return;
 }
@@ -561,11 +606,6 @@ void tryStartSemiSurvivalVote(EHandle h_plr) {
 void tryStartRestartVote(EHandle h_plr) {
 	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
 	if (plr is null or !tryStartGameVote(plr)) {
-		return;
-	}
-	
-	if (!g_SurvivalMode.IsActive()) {
-		g_PlayerFuncs.SayText(plr, "[Vote] Restarts are only allowed during survival.\n");
 		return;
 	}
 	

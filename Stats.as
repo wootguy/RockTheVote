@@ -302,8 +302,11 @@ void sortMapsByFreshness(array<SortableMap>@ maps, array<SteamName>@ activePlaye
 		}
 	}
 	
+	array<bool> isSeriesMap(maps.size());
+	
 	for (uint k = 0; k < maps.size(); k++) {
 		maps[k].sort = 0;
+		isSeriesMap[k] = g_seriesMaps.exists(maps[k].map);
 	}
 	
 	for ( pidx; pidx < activePlayers.size(); pidx++ ) {
@@ -316,10 +319,14 @@ void sortMapsByFreshness(array<SortableMap>@ maps, array<SteamName>@ activePlaye
 		}
 		
 		for (uint k = 0; k < maps.size(); k++) {
-			MapStat@ stat = history.stats.get(maps[k].map, maps[k].hashKey);
+			if (isSeriesMap[k]) {
+				maps[k].sort = getLastSeriesPlayTime(history, maps[k].map);
+			} else {
+				MapStat@ stat = history.stats.get(maps[k].map, maps[k].hashKey);
 	
-			if (stat.last_played > maps[k].sort) {
-				maps[k].sort = stat.last_played;
+				if (stat.last_played > maps[k].sort) {
+					maps[k].sort = stat.last_played;
+				}
 			}
 		}
 	}
@@ -349,19 +356,23 @@ uint64 getLastPlayTime(string steamid, SortableMap map) {
 	}
 	
 	if (g_seriesMaps.exists(map.map)) {
-		array<SortableMap>@ series = cast<array<SortableMap>@>(g_seriesMaps[map.map]);
-		
-		uint64 mostRecent = 0;
-		
-		for (uint i = 0; i < series.size(); i++) {
-			uint64 lastPlay = history.stats.get(series[i].map, series[i].hashKey).last_played;
-			mostRecent = Math.max(lastPlay, mostRecent);
-		}
-		
-		return mostRecent;
+		return getLastSeriesPlayTime(history, map);
 	}
 	
 	return history.stats.get(map.map, map.hashKey).last_played;
+}
+
+uint64 getLastSeriesPlayTime(PlayerMapHistory@ history, SortableMap map) {
+	array<SortableMap>@ series = cast<array<SortableMap>@>(g_seriesMaps[map.map]);
+	
+	uint64 mostRecent = 0;
+	
+	for (uint i = 0; i < series.size(); i++) {
+		uint64 lastPlay = history.stats.get(series[i].map, series[i].hashKey).last_played;
+		mostRecent = Math.max(lastPlay, mostRecent);
+	}
+	
+	return mostRecent;
 }
 
 void showFreshMaps(EHandle h_plr, int targetType, string targetName, string targetId, array<SortableMap>@ maps, bool reverse) {

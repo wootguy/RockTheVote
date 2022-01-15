@@ -320,7 +320,10 @@ void sortMapsByFreshness(array<SortableMap>@ maps, array<SteamName>@ activePlaye
 		
 		for (uint k = 0; k < maps.size(); k++) {
 			if (isSeriesMap[k]) {
-				maps[k].sort = getLastSeriesPlayTime(history, maps[k].map);
+				uint64 lastplay = getLastSeriesPlayTime(history, maps[k].map);
+				if (lastplay > maps[k].sort) {
+					maps[k].sort = lastplay;
+				}
 			} else {
 				MapStat@ stat = history.stats.get(maps[k].map, maps[k].hashKey);
 	
@@ -356,14 +359,14 @@ uint64 getLastPlayTime(string steamid, SortableMap map) {
 	}
 	
 	if (g_seriesMaps.exists(map.map)) {
-		return getLastSeriesPlayTime(history, map);
+		return getLastSeriesPlayTime(history, map.map);
 	}
 	
 	return history.stats.get(map.map, map.hashKey).last_played;
 }
 
-uint64 getLastSeriesPlayTime(PlayerMapHistory@ history, SortableMap map) {
-	array<SortableMap>@ series = cast<array<SortableMap>@>(g_seriesMaps[map.map]);
+uint64 getLastSeriesPlayTime(PlayerMapHistory@ history, string mapname) {
+	array<SortableMap>@ series = cast<array<SortableMap>@>(g_seriesMaps[mapname]);
 	
 	uint64 mostRecent = 0;
 	
@@ -564,6 +567,11 @@ array<SteamName> getActivePlayers() {
 	for (uint i = 0; i < idKeys.length(); i++) {
 		string steamid = idKeys[i];
 		PlayerActivity@ activity = cast<PlayerActivity@>(g_player_activity[steamid]);
+		
+		if (activity is null) {
+			continue;
+		}
+		
 		CBasePlayer@ plr = getPlayerById(steamid);
 		string name = plr !is null ? string(plr.pev.netname) : "\\disconnected\\";
 		

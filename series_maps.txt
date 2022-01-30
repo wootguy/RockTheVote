@@ -57,8 +57,7 @@ echoes-0 echoes-1 echoes-2 echoes-3 echoes-4 echoes-5 echoes-6 echoes-7 echoes-8
 enc1 enc2 enc3
 es_01 es_02 es_03
 escape_series escape_series_1a escape_series_1b escape_series_2a escape_series_2b escape_series_2c escape_series_2d escape_series_2e escape_series_3a escape_series_3b escape_series_3c escape_series_3d escape_series_3e
-etc etc0b etc0b2 etc0c2 etc0c etc0d etc0e
-etc2_1 etc2_2 etc2_3 etc2_4 etc2_5
+etc etc0b etc0b2 etc0c2 etc0c etc0d etc0e etc2_1 etc2_2 etc2_3 etc2_4 etc2_5
 etf_1 etf_2 etf_3 fresco2
 evasion1 evasion2 evasion3 evasion4 evasion5 evasion6
 evasion_1 evasion_2
@@ -129,12 +128,14 @@ operation_barbarossa operation_barbarossa_ch2
 operation_barbarossa_rc4 operation_barbarossa_ch2_rc4
 operationalpha operationalpha2 opalphacredits
 opr1a1 opr1a2 opr1a3 opr1a4 opr1a5 opr1a6 opr1a7 opr1a8
+ops_hq_1 ops_17th ops_sub ops_17th_2 ops_17th_3 ops_chtwn ops_chtwn_2 ops_sew ops_chtwn_3 ops_ind_1 ops_ind_2 ops_ind_3 ops_ind_4 ops_cut_3 ops_jail_1 ops_jail_2 ops_jail_3 ops_jail_4 ops_cut_4 ops_desrt ops_park_1 ops_credits
 osd_intro osd_p01 osd_p02 osd_p03 osd_p04 osd_p05 osd_p06 osd_p07 osd_p08 osd_p09 osd_p10
 oxycaves_beta9 oxysnowworld-1beta
 pagoda_intro pagoda_out pagoda_in pagoda_boss pagodaoutside pagoda_end pagoboss
 peanyworldbeta1-1 peanyworldbeta1-2
 ph_iv1 ph_iv2 ph_iv3 ph_iv4
 po_intro po_c0m1 po_c0m2 po_c0m3 po_c1m1 po_c1m2 po_c1m3 po_c1m4 po_c2m1 po_c2m2 po_c2m3 po_c2m4 po_c2m5 po_c3m1 po_c3m2 po_c3m3 po_c3m4 po_c3m5 po_c3m6 po_c3m7 po_c3m8 po_c4m1 po_c4m2 po_c4m3 po_c4m4 po_c4m5 po_c5m1 po_outro
+powernode1 powernode2 powernode3
 project_orion1 project_orion2
 projectg1 projectg2 projectg3 projectg4 projectg5 projectg6 projectg7 projectgscrt1a projectg8 projectgscrt1b
 pv_intro pv_c1m1 pv_c1m2 pv_c1m3 pv_c1m4 pv_c1m5 pv_c2m1 pv_c2m2 pv_c2m3 pv_c2m4 pv_c2m5 pv_c3m1 pv_c3m2 pv_outro
@@ -174,6 +175,8 @@ sc_egypt sc_egypt2
 sc_er sc_er2
 sc_fuga warningcitymulp warningcity2mulp warningcity3mulp warningc llampyalto dejabu
 sc_habitat sc_habitat2
+hauntedsouls_a1 hauntedsouls_a2
+sc_invasion_a0 sc_invasion_a1 sc_invasion_b0 sc_invasion_b1 sc_invasion_c0 sc_invasion_c1 sc_invasion_finale
 sc_ksct sc_ksct2 sc_ksct2-fb
 sc_lexm sc_lexm_a sc_lexm_b sc_lexm_c sc_lexm_final sc_field
 sc_lipas_1_sp afrikakorps1 afrikakorps2 afrikakorps3 afrikakorps_bonus
@@ -196,7 +199,7 @@ sc_tombofdeath_v12-1 sc_tombofdeath_v12-2 sc_tombofdeath_v12-3 sc_tombofdeath_v1
 sc_trapped1 sc_trapped2
 sc_tropical_final sc_tropical1_final sc_tropical2_final sc_tropical3_final
 sc_volt2 sc_volt2a
-sc_worms_series sc_worms_series2 sc_worms_series3
+sc_worms_series sc_worms_series2
 schall_1 schall_2 schall_3 schall_4 schall_5 schall_6 schall_7 schall_8 schall_9 schall_10 schall_11 schall_12
 secretcity secretcity2 secretcity3 secretcity4beta secretcity5beta secretcityx secretcity6b6 secretcitykeen_beta secretcitykeen_2_alpha die fracb1 reddeath
 sectore4prealpha redshift4_foam_alpha
@@ -210,6 +213,7 @@ squad_gman1 squad_gman2
 ss0a0 ss1a1 ss1a2 ss1a3 ss1a4 ss2a1 ss2a2 ss2a3 ss3a1 ss3a2 ss3a3 ss3a4 ss3a5 ss4a1 ss4a2 ss4a3 ss5a1 ss6a0
 ss1a1new ss1a3 ss1a4 ss2a1 ss2a2 ss2a3 ss3a1 ss3a2 ss3a3 ss3a4 ss3a5 ss4a1 ss4a2 ss4a3 ss5a1 ss6a0
 survivor1 survivor2extended survivor3 survivor4ext
+svencoop1 svencoop2
 svor01 svor00 svor02
 targetneutralized1 targetneutralized2 targetneutralized3
 tb_fun1f tb_fun2f tb_fun3
@@ -222,7 +226,7 @@ the_daikon_warfare1 the_daikon_warfare2 the_daikon_warfare3
 theyrhungry theyrhungry2
 tln_1 a1s1 a0s0 tln_2 tln_3 tln_4 tln_5 a2s2 tln_6 tln_7 tln_8 a3s2 a4s1
 toonrun1_48 toonrun2_48 toonrun3_48
-trondheim afrikakorps1 afrikakorps2 afrikakorps3 afrikakorps_bonus
+afrikakorps1 afrikakorps2 afrikakorps3 afrikakorps_bonus
 tunnelvision_1 tunnelvision_2 tunnelvision_3 tunnelvision_4 tunnelvision_5 tunnelvision_6
 tunnelvision_1b tunnelvision_1c tunnelvision_2 tunnelvision_3 tunnelvision_4 tunnelvision_5 tunnelvision_6
 tuntis_blackmesadefence1 tuntis_blackmesadefence2

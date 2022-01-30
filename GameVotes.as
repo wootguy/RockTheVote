@@ -1,12 +1,13 @@
 MenuVote::MenuVote g_gameVote;
 float g_lastGameVote = 0;
 string g_lastVoteStarter; // used to prevent a single player from spamming votes by doubling their cooldown
+bool g_semi_survival = true;
 
 const int VOTE_FAILS_UNTIL_BAN = 2; // if a player keeps starting votes that fail, they're banned from starting more votes
 const int VOTE_FAIL_IGNORE_TIME = 60; // number of minutes to remember failed votes
 const int VOTING_BAN_DURATION = 4*60; // number of minutes a ban lasts (banned from starting votes, not from the server)
 const int GLOBAL_VOTE_COOLDOWN = 5; // just enough time to read results of the previous vote.
-const int RESTART_MAP_PERCENT_REQ = 75;
+const int RESTART_MAP_PERCENT_REQ = 80;
 const int SEMI_SURVIVAL_PERCENT_REQ = 67;
 
 class PlayerVoteState
@@ -255,9 +256,11 @@ void semiSurvivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ ch
 		if (chosenOption.value == "enable") {
 			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to enable semi-survival mode passed.\n");
 			g_EngineFuncs.ServerCommand("as_command fsurvival.mode 2\n");
+			g_semi_survival = true;
 		} else if (chosenOption.value == "disable") {
 			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to disable semi-survival mode passed.\n");
 			g_EngineFuncs.ServerCommand("as_command fsurvival.mode 0\n");
+			g_semi_survival = false;
 		}
 	}
 	else {
@@ -265,6 +268,16 @@ void semiSurvivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ ch
 		int got = voteMenu.getOptionVotePercent("Yes");
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to toggle semi-survival mode failed " + yesVoteFailStr(got, required) + ".\n");
 		voterState.handleVoteFail();
+	}
+}
+
+void SemiSurvivalMapInit() {
+	string thismap = string(g_Engine.mapname).ToLowercase();
+	if (g_semi_survival and (g_next_series_map == thismap || g_previous_map == thismap)) {
+		println("[RTV] Persisting semi survival mode across map change");
+		g_EngineFuncs.ServerCommand("as_command fsurvival.mode 2\n");
+	} else {
+		g_semi_survival = false;
 	}
 }
 

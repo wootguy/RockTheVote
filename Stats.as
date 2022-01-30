@@ -249,7 +249,18 @@ void setFreshMapAsNextMap(array<SortableMap>@ maps) {
 }
 
 void setNextMap(dictionary args) {
-	string nextmap = g_randomCycleMaps[0].map;
+	
+	// prevent the same maps always being shown for players who have little history
+	uint maxUnplayed = 0;
+	for (uint i = 0; i < g_randomCycleMaps.size(); i++) {
+		if (g_randomCycleMaps[i].sort != 0) {
+			maxUnplayed = i;
+			break;
+		}
+	}
+
+	string nextmap = g_randomCycleMaps[Math.RandomLong(0, maxUnplayed)].map;
+	
 	println("[RTV] Most fresh next map: " + nextmap);
 	g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + nextmap + "\n");
 }

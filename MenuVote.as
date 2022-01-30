@@ -100,6 +100,12 @@ void voteThink() {
 	}
 }
 
+void voteCleanup() {
+	if (g_activeVote !is null) {
+		g_activeVote.reset();
+	}
+}
+
 HookReturnCode MapChange() {
 	g_Scheduler.RemoveTimer(g_menuTimer);
 	return HOOK_CONTINUE;
@@ -473,6 +479,8 @@ class MenuVote {
 		for (float d = 0; d < g_resultTime; d += 0.25f) {
 			g_Scheduler.SetTimeout("voteThink", d);
 		}
+		
+		g_Scheduler.SetTimeout("voteCleanup", (g_resultTime+1)*0.25f);
 		
 		status = MVOTE_FINISHED;
 		

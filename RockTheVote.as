@@ -129,7 +129,7 @@ void MapInit() {
 	SemiSurvivalMapInit();
 	
 	g_next_series_map = getNextSeriesMap();
-	if (g_next_series_map.Length() > 0 ) {
+	if (g_next_series_map.Length() > 0 and g_EngineFuncs.IsMapValid(g_next_series_map)) {
 		g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + g_next_series_map + "\n");
 	} else {
 		setFreshMapAsNextMap(g_randomCycleMaps); // something most haven't played in the longest time
@@ -368,10 +368,16 @@ void enable_level_changes() {
 
 void startVote(string reason="") {
 	
-	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] Vote starting! " + reason + "\n");
-	if (g_gameVote.status != MVOTE_NOT_STARTED) {
+	if (g_gameVote.status == MVOTE_IN_PROGRESS) {
 		g_gameVote.cancel();
+	} else if (g_gameVote.status == MVOTE_FINISHED) {
+		println("Waiting for game vote to end...");
+		g_Scheduler.SetTimeout("startVote", 1.0f, reason);
+		g_generating_rtv_list = true; // prevent auto-start starting rtv
+		return;
 	}
+	
+	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] Vote starting! " + reason + "\n");
 	
 	if (g_randomRtvChoices.size() == 0) {
 		g_Log.PrintF("[RTV] All maps are excluded by the previous map list! Make sure g_ExcludePrevMaps value is less than the total nommable maps.\n");
@@ -471,6 +477,40 @@ int tryRtv(CBasePlayer@ plr) {
 	} else {
 		sayRtvCount(plr);
 	}
+	
+	return 2;
+}
+
+int unRtv(CBasePlayer@ plr) {
+	int eidx = plr.entindex();
+	
+	if (g_rtvVote.status == MVOTE_FINISHED) {
+		return 1;
+	}
+	
+	if (g_generating_rtv_list) {
+		return 2;
+	}
+	
+	if (g_rtvVote.status == MVOTE_IN_PROGRESS) {
+		g_rtvVote.reopen(plr);
+		return 2;
+	}
+	
+	if (g_Engine.time < g_SecondsUntilVote.GetInt()) {
+		int timeLeft = int(Math.Ceil(float(g_SecondsUntilVote.GetInt()) - g_Engine.time));
+		g_PlayerFuncs.SayText(plr, "[RTV] RTV will enable in " + timeLeft + " seconds.\n");
+		return 2;
+	}
+	
+	if (!g_playerStates[eidx].didRtv) {
+		g_PlayerFuncs.SayText(plr, "[RTV] " + getCurrentRtvCount() + " of " + getRequiredRtvCount() + " players until vote starts! You haven't rtv'd yet.\n");
+		return 2;
+	}
+	
+	g_playerStates[eidx].didRtv = false;
+	
+	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[RTV] " + plr.pev.netname + " took their \"rtv\" back.\n");
 	
 	return 2;
 }
@@ -666,7 +706,7 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 		return false;
 	}
 	
-	if (isMapExcluded(mapname, getActivePlayers(), plr)) {
+	if (isMapExcluded(mapname, getActivePlayers(true), plr)) {
 		return false;
 	}
 	
@@ -1120,6 +1160,9 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		}
 		else if (args[0] == "rtv" and args.ArgC() == 1) {
 			return tryRtv(plr);
+		}
+		else if (args[0] == "unrtv" and args.ArgC() == 1) {
+			return unRtv(plr);
 		}
 		else if (args[0] == "nom" || args[0] == "nominate" || args[0] == ".nom" || args[0] == ".nominate") {
 			string mapname = args.ArgC() >= 2 ? args[1].ToLowercase() : "";

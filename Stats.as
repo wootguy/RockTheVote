@@ -560,7 +560,7 @@ void showLastPlayedTimes(CBasePlayer@ plr, string mapname) {
 }
 
 // players who have been at least 50% active up until the current time
-array<SteamName> getActivePlayers() {
+array<SteamName> getActivePlayers(bool connectedOnly=false) {
 	array<SteamName> activePlayers;
 	
 	array<string>@ idKeys = g_player_activity.getKeys();	
@@ -574,6 +574,10 @@ array<SteamName> getActivePlayers() {
 		
 		CBasePlayer@ plr = getPlayerById(steamid);
 		string name = plr !is null ? string(plr.pev.netname) : "\\disconnected\\";
+		
+		if (connectedOnly and plr is null) {
+			continue;
+		}
 		
 		float levelTime = g_Engine.time - 60; // substract some time for loading/downloading
 		float percentActive = activity.totalActivity / levelTime;

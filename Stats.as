@@ -40,7 +40,7 @@ dictionary g_player_activity; // maps steam id to time they joined the map. used
 dictionary g_prev_map_activity; // maps steam id to percentage active time in previous map
 array<SteamName> g_nextmap_players; // active players from the previous map that will decide the next map for the current map
 bool g_anyone_joined = false; // used to prevent double-loaded maps from clearing active player list
-string g_previous_map = ""; // last map which ran the map selection logic
+string g_previous_stats_map = ""; // last map which ran the map selection logic
 float g_lastActiveCheck = 0;
 
 enum MAP_RATINGS {
@@ -554,7 +554,7 @@ void showLastPlayedTimes(CBasePlayer@ plr, string mapname) {
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "---------------------------------------------------------------------------------\n\n");
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Previous play times are used to pick \"Next maps\" that have the highest minimum age.\n\n");
 	
-	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\"Previous activity\" shows the percentage of activity in the previous map (" + g_previous_map + ").\n");
+	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "\"Previous activity\" shows the percentage of activity in the previous map (" + g_previous_stats_map + ").\n");
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "Players with an [x] were considered when deciding the current \"Next Map\".\n");
 	g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, "" + int(MIN_ACTIVE_TIME*100) + "%% is the minimum to be considered for map selection.\n\n");
 }
@@ -640,7 +640,7 @@ void writeActivePlayerStats() {
 
 	g_prev_map_activity.clear();
 
-	g_previous_map = g_Engine.mapname;
+	g_previous_stats_map = g_Engine.mapname;
 	updatePlayerStats();
 
 	array<string>@ idKeys = g_player_activity.getKeys();	

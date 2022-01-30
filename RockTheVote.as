@@ -65,6 +65,8 @@ array<string> g_hiddenMaps;
 // maps that are split into multiple bsp files
 const string seriesMapsFile = "scripts/plugins/RockTheVote/series_maps.txt";
 dictionary g_seriesMaps; // maps a votable map to a list of maps
+string g_next_series_map = "";
+string g_previous_map = "";
 
 array<RtvState> g_playerStates;
 array<SortableMap> g_everyMap; // sorted combination of normal and hidden maps
@@ -124,19 +126,21 @@ void MapInit() {
 	
 	reset();
 	
-	string nextSeriesMap = getNextSeriesMap();
-	if (nextSeriesMap.Length() > 0 ) {
-		g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + nextSeriesMap + "\n");
+	SemiSurvivalMapInit();
+	
+	g_next_series_map = getNextSeriesMap();
+	if (g_next_series_map.Length() > 0 ) {
+		g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + g_next_series_map + "\n");
 	} else {
 		setFreshMapAsNextMap(g_randomCycleMaps); // something most haven't played in the longest time
 	}
-	
 }
 
 HookReturnCode MapChange() {
 	writeActivePlayerStats();
 	g_player_activity.clear();
 	g_Scheduler.RemoveTimer(g_timer);
+	g_previous_map = g_Engine.mapname;
 	return HOOK_CONTINUE;
 }
 

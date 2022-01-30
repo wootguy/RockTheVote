@@ -293,12 +293,28 @@ void createRtvMenu(dictionary args) {
 		rtvList.insertLast(g_MapCycle.GetNextMap());
 	}
 	
+	array<string> shuffleChoices;
+	uint firstPlayedMapIdx = 0;
+	int mapsNeeded = maxMenuItems - rtvList.size();
+	
+	// prevent the same maps always being shown for players who have little history
+	for (uint i = 0; i < g_randomRtvChoices.size(); i++) {
+		if (g_randomRtvChoices[i].sort != 0 and int(shuffleChoices.size()) > mapsNeeded) {
+			break;
+		}
+		
+		shuffleChoices.insertLast(g_randomRtvChoices[i].map);
+	}
+	println("Shuffling " + shuffleChoices.size() + " maps");
+	
 	for (uint failsafe = 0; failsafe < g_randomRtvChoices.size(); failsafe++) {	
 		if (rtvList.size() >= maxMenuItems) {
 			break;
 		}
 		
-		string randomMap = g_randomRtvChoices[failsafe].map;
+		int idx = Math.RandomLong(0, shuffleChoices.size()-1);
+		string randomMap = shuffleChoices[idx];
+		shuffleChoices.removeAt(idx);
 		
 		if (rtvList.find(randomMap) == -1 && g_EngineFuncs.IsMapValid(randomMap)) {
 			rtvList.insertLast(randomMap);

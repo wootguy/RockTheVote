@@ -272,9 +272,11 @@ void semiSurvivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ ch
 }
 
 void SemiSurvivalMapInit() {
-	string thismap = string(g_Engine.mapname).ToLowercase();
-	if (g_semi_survival and (g_next_series_map == thismap || g_previous_map == thismap)) {
-		println("[RTV] Persisting semi survival mode across map change");
+	bool levelChangeToSameSeries = g_current_series_maps !is null and g_previous_series_maps !is null
+									and g_current_series_maps[0].map == g_previous_series_maps[0].map;
+
+	if (g_semi_survival and levelChangeToSameSeries) {
+		println("[RTV] Persisting semi survival mode across map change in the same series");
 		g_EngineFuncs.ServerCommand("as_command fsurvival.mode 2\n");
 	} else {
 		g_semi_survival = false;

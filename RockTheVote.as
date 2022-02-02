@@ -65,8 +65,9 @@ array<string> g_hiddenMaps;
 // maps that are split into multiple bsp files
 const string seriesMapsFile = "scripts/plugins/RockTheVote/series_maps.txt";
 dictionary g_seriesMaps; // maps a votable map to a list of maps
-string g_next_series_map = "";
 string g_previous_map = "";
+array<SortableMap>@ g_current_series_maps = null;
+array<SortableMap>@ g_previous_series_maps = null;
 
 array<RtvState> g_playerStates;
 array<SortableMap> g_everyMap; // sorted combination of normal and hidden maps
@@ -100,8 +101,8 @@ void PluginInit() {
 	@g_MaxMapsToVote = CCVar("iMaxMaps", 6, "How many maps can players nominate and vote for later", ConCommandFlag::AdminOnly);
 	@g_VotingPeriodTime = CCVar("secondsToVote", 25, "How long can players vote for a map before a map is chosen", ConCommandFlag::AdminOnly);
 	@g_PercentageRequired = CCVar("iPercentReq", 66, "0-100, percent of players required to RTV before voting happens", ConCommandFlag::AdminOnly);
-	@g_NormalMapCooldown = CCVar("NormalMapCooldown", 24, "Time in hours before a map can be nommed again", ConCommandFlag::AdminOnly);
-	@g_MemeMapCooldown = CCVar("MemeMapCooldown", 24*30, "Time in hours before a meme map can be nommed again", ConCommandFlag::AdminOnly);
+	@g_NormalMapCooldown = CCVar("NormalMapCooldown", 12, "Time in hours before a map can be nommed again", ConCommandFlag::AdminOnly);
+	@g_MemeMapCooldown = CCVar("MemeMapCooldown", 24*5, "Time in hours before a meme map can be nommed again", ConCommandFlag::AdminOnly);
 	@g_EnableGameVotes = CCVar("gameVotes", 1, "Text menu replacements for the default game votes", ConCommandFlag::AdminOnly);
 	@g_EnableForceSurvivalVotes = CCVar("forceSurvivalVotes", 0, "Enable semi-survival vote (requires ForceSurvival plugin)", ConCommandFlag::AdminOnly);
 	@g_EnableRestartVotes = CCVar("restartVotes", 0, "Enable map restart votes", ConCommandFlag::AdminOnly);
@@ -126,11 +127,14 @@ void MapInit() {
 	
 	reset();
 	
-	SemiSurvivalMapInit();
+	@g_previous_series_maps = @g_current_series_maps;
+	@g_current_series_maps = getMapSeriesMaps(g_Engine.mapname);
+	string next_series_map = getNextSeriesMap(g_current_series_maps);
 	
-	g_next_series_map = getNextSeriesMap();
-	if (g_next_series_map.Length() > 0 and g_EngineFuncs.IsMapValid(g_next_series_map)) {
-		g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + g_next_series_map + "\n");
+	SemiSurvivalMapInit();
+
+	if (next_series_map.Length() > 0 and g_EngineFuncs.IsMapValid(next_series_map)) {
+		g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + next_series_map + "\n");
 	} else {
 		setFreshMapAsNextMap(g_randomCycleMaps); // something most haven't played in the longest time
 	}
@@ -935,8 +939,8 @@ void loadAllMapLists() {
 	g_everyMap.sort(function(a,b) { return a.map.Compare(b.map) < 0; });
 }
 
-array<SortableMap>@ getMapSeriesMaps() {
-	string mapname = string(g_Engine.mapname).ToLowercase();
+array<SortableMap>@ getMapSeriesMaps(string thismap) {
+	string mapname = thismap.ToLowercase();
 	
 	array<string>@ mapKeys = g_seriesMaps.getKeys();
 	for (uint i = 0; i < mapKeys.length(); i++) {
@@ -952,9 +956,8 @@ array<SortableMap>@ getMapSeriesMaps() {
 	return null;
 }
 
-string getNextSeriesMap() {
+string getNextSeriesMap(array<SortableMap>@ maps) {
 	string mapname = string(g_Engine.mapname).ToLowercase();
-	array<SortableMap>@ maps = getMapSeriesMaps();
 	
 	if (maps !is null) {
 		for (uint i = 0; i < maps.size(); i++) {

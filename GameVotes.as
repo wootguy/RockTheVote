@@ -716,7 +716,6 @@ int doGameVote(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			voteParams.title = args[1];
 			voteParams.options = options;
 			voteParams.voteTime = int(g_EngineFuncs.CVarGetFloat("mp_votetimecheck"));
-			voteParams.forceOpen = false;
 			@voteParams.finishCallback = @customPollFinishCallback;
 			@voteParams.optionCallback = @optionChosenCallback;
 			g_gameVote.start(voteParams, plr);

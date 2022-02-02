@@ -80,6 +80,7 @@ MenuVote::MenuVote g_rtvVote;
 uint g_maxNomMapNameLength = 0; // used for even spacing in the full console map list
 CScheduledFunction@ g_timer = null;
 bool g_generating_rtv_list = false; // true while maps are being sorted for rtv menu
+bool g_autostart_allowed = true;
 
 const float levelChangeDelay = 5.0f; // time in seconds intermission is shown for game_end
 
@@ -160,6 +161,7 @@ void reset() {
 	g_lastGameVote = 0;
 	g_anyone_joined = false;
 	g_generating_rtv_list = false;
+	g_autostart_allowed = true;
 	g_lastQuestion = -999;
 }
 
@@ -273,7 +275,7 @@ int getRequiredRtvCount(bool excludeAfks=true) {
 bool canAutoStartRtv() {
 	if (g_rtvVote.status == MVOTE_NOT_STARTED && g_Engine.time > g_SecondsUntilVote.GetInt()) {
 		if (getCurrentRtvCount() >= getRequiredRtvCount() and getCurrentRtvCount() > 0) {
-			return !g_generating_rtv_list;
+			return !g_generating_rtv_list and g_autostart_allowed;
 		}
 	}
 	
@@ -338,7 +340,6 @@ void createRtvMenu(dictionary args) {
 	voteParams.title = "RTV Vote";
 	voteParams.options = menuOptions;
 	voteParams.voteTime = g_VotingPeriodTime.GetInt();
-	voteParams.forceOpen = false;
 	@voteParams.optionCallback = @mapChosenCallback;
 	@voteParams.thinkCallback = @voteThinkCallback;
 	@voteParams.finishCallback = @voteFinishCallback;
@@ -405,6 +406,7 @@ void startVote(string reason="") {
 		return;
 	}
 	
+	g_autostart_allowed = false;
 	g_generating_rtv_list = true;
 	disable_level_changes();
 	sortMapsByFreshness(g_randomRtvChoices, getActivePlayers(), 0, createRtvMenu, {});
@@ -449,6 +451,7 @@ void reset_failsafe() {
 	g_playerStates.resize(33);
 	g_nomList.resize(0);
 	g_generating_rtv_list = false;
+	g_autostart_allowed = true;
 }
 
 void mapChosenCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, CBasePlayer@ plr) {

@@ -45,7 +45,6 @@ class MenuVoteParams {
 		MenuOption("No")
 	};
 	int voteTime = 10;						// Time in seconds to display the vote
-	bool forceOpen = false;					// force the menu to stay open after the player votes
 	
 	int percentNeeded = -1;							// Percentage of votes needed for an option to be chosen (0-100)
 	MenuOption percentFailOption = options[1];		// Default option chosen if no option has enough percentage of votes
@@ -73,6 +72,7 @@ namespace MenuVote
 CScheduledFunction@ g_menuTimer = null;
 MenuVote@ g_activeVote = null;
 bool g_hooks_registered = false;
+string lotsOfNewlines = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n";
 
 float g_resultTime = 1.5f;
 
@@ -229,7 +229,7 @@ class MenuVote {
 		int totalVotes = getTotalVotes();
 	
 		@g_menus[eidx] = CTextMenu(@voteMenuCallback);
-		g_menus[eidx].SetTitle("\\y" + voteParams.title);
+		g_menus[eidx].SetTitle(lotsOfNewlines + "\\y" + voteParams.title);
 		
 		for (uint i = 0; i < voteParams.options.length(); i++) {
 			int thisOption = i+1;
@@ -272,6 +272,8 @@ class MenuVote {
 				} else {
 					label += "\n\n";
 				}
+				
+				label += lotsOfNewlines; // hide the broken Exit button
 			}
 			
 			label += "\\y";
@@ -288,7 +290,7 @@ class MenuVote {
 	}
 	
 	bool isPlayerWatching(CBasePlayer@ plr) {
-		return voteParams.forceOpen or playerVotes[plr.entindex()] == 0 or playerWatching[plr.entindex()];
+		return playerVotes[plr.entindex()] == 0 or playerWatching[plr.entindex()];
 	}
 	
 	void reopen(CBasePlayer@ plr) {

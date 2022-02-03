@@ -265,7 +265,8 @@ void semiSurvivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ ch
 		}
 	}
 	else {
-		int required = SEMI_SURVIVAL_PERCENT_REQ;
+		int disableReq = int(g_EngineFuncs.CVarGetFloat("mp_votesurvivalmoderequired"));
+		int required = g_semi_survival ? disableReq : SEMI_SURVIVAL_PERCENT_REQ;
 		int got = voteMenu.getOptionVotePercent("Yes");
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to toggle semi-survival mode failed " + yesVoteFailStr(got, required) + ".\n");
 		voterState.handleVoteFail();

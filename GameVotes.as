@@ -1,7 +1,7 @@
 MenuVote::MenuVote g_gameVote;
 float g_lastGameVote = 0;
 string g_lastVoteStarter; // used to prevent a single player from spamming votes by doubling their cooldown
-bool g_semi_survival = true;
+bool g_semi_survival = false;
 
 const int VOTE_FAILS_UNTIL_BAN = 2; // if a player keeps starting votes that fail, they're banned from starting more votes
 const int VOTE_FAIL_IGNORE_TIME = 60; // number of minutes to remember failed votes
@@ -44,8 +44,7 @@ class PlayerVoteState
 	}
 	
 	void handleVoteSuccess() {
-		// player knows what the people want. Keep it up! But give someone else a chance to start a vote
-		nextVoteAllow = DateTime() + TimeDifference(GLOBAL_VOTE_COOLDOWN*2);
+		// player knows what the people want. Keep it up!
 		failedVoteTimes.resize(0);
 	}
 }
@@ -235,6 +234,8 @@ void survivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosen
 		} else if (chosenOption.value == "disable") {
 			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to disable survival mode passed.\n");
 			g_SurvivalMode.VoteToggle();
+			g_EngineFuncs.ServerCommand("as_command fsurvival.mode 0\n");
+			g_semi_survival = false;
 		}
 	}
 	else {
@@ -258,8 +259,8 @@ void semiSurvivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ ch
 			g_EngineFuncs.ServerCommand("as_command fsurvival.mode 2\n");
 			g_semi_survival = true;
 		} else if (chosenOption.value == "disable") {
-			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to disable semi-survival mode passed.\n");
-			g_EngineFuncs.ServerCommand("as_command fsurvival.mode 0\n");
+			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to switch to normal survival mode passed.\n");
+			g_EngineFuncs.ServerCommand("as_command fsurvival.mode 3\n");
 			g_semi_survival = false;
 		}
 	}
@@ -363,12 +364,26 @@ void openGameVoteMenu(CBasePlayer@ plr) {
 						   g_EngineFuncs.CVarGetFloat("mp_survival_supported") != 0;
 	bool canVoteSemiSurvival = g_EngineFuncs.CVarGetFloat("mp_survival_voteallow") != 0;
 	
-	if (!g_SurvivalMode.IsEnabled()) {
-		g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Enable survival " + survReq + "\\y", any("survival"));
-		if (g_EnableForceSurvivalVotes.GetInt() != 0)
+	if (g_EnableForceSurvivalVotes.GetInt() != 0) {
+		if (!g_SurvivalMode.IsEnabled()) {
+			g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Enable survival " + survReq + "\\y", any("survival"));
 			g_menus[eidx].AddItem((canVoteSemiSurvival ? "\\w" : "\\r") + "Enable semi-survival " + semiSurvReq + "\\y", any("semi-survival"));
+		} else {
+			g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Disable survival " + survReq + "\\y", any("survival"));
+			
+			if (g_semi_survival)
+				g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Switch to normal survival " + survReq + "\\y", any("semi-survival"));
+			else
+				g_menus[eidx].AddItem((canVoteSemiSurvival ? "\\w" : "\\r") + "Switch to semi-survival " + semiSurvReq + "\\y", any("semi-survival"));
+		}
+		
+		
 	} else {
-		g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Disable survival " + survReq + "\\y", any("survival"));
+		if (!g_SurvivalMode.IsEnabled()) {
+			g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Enable survival " + survReq + "\\y", any("survival"));
+		} else {
+			g_menus[eidx].AddItem((canVoteSurvival ? "\\w" : "\\r") + "Disable survival " + survReq + "\\y", any("survival"));
+		}
 	}
 	
 	if (g_EnableRestartVotes.GetInt() != 0)
@@ -587,14 +602,15 @@ void tryStartSemiSurvivalVote(EHandle h_plr) {
 		return;
 	}
 	
-	bool survivalEnabled = g_SurvivalMode.IsEnabled();
-	string title = (survivalEnabled ? "Disable" : "Enable") + " semi-survival mode?";
-	if (!survivalEnabled) {
-		title += "\n(respawn in waves)";
+	string title;
+	if (!g_semi_survival) {
+		title = "Enable semi-survival mode?\n(respawn in waves)";
+	} else {
+		title = "Enable survival mode?\n(disable respawn timer)";
 	}
 	
 	array<MenuOption> options = {
-		MenuOption("Yes", survivalEnabled ? "disable" : "enable"),
+		MenuOption("Yes", g_semi_survival ? "disable" : "enable"),
 		MenuOption("No", "no"),
 		MenuOption("\\d(exit)")
 	};
@@ -605,14 +621,14 @@ void tryStartSemiSurvivalVote(EHandle h_plr) {
 	voteParams.options = options;
 	voteParams.percentFailOption = options[1];
 	voteParams.voteTime = int(g_EngineFuncs.CVarGetFloat("mp_votetimecheck"));
-	voteParams.percentNeeded = SEMI_SURVIVAL_PERCENT_REQ;
+	voteParams.percentNeeded = g_semi_survival ? int(g_EngineFuncs.CVarGetFloat("mp_votesurvivalmoderequired")) : SEMI_SURVIVAL_PERCENT_REQ;
 	@voteParams.finishCallback = @semiSurvivalVoteFinishCallback;
 	@voteParams.optionCallback = @optionChosenCallback;
 	g_gameVote.start(voteParams, plr);
 	
 	g_lastVoteStarter = getPlayerUniqueId(plr);
 	
-	string enableDisable = survivalEnabled ? "disable" : "enable";
+	string enableDisable = g_semi_survival ? "disable" : "enable";
 	g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to " + enableDisable + " semi-survival mode started by \"" + plr.pev.netname + "\".\n");
 	
 	return;

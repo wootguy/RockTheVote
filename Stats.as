@@ -664,7 +664,7 @@ void writeActivePlayerStats() {
 		
 		PlayerMapHistory@ history = cast<PlayerMapHistory@>(g_player_map_history[steamid]);
 			
-		if (!history.loaded) { 
+		if (history is null or !history.loaded) { 
 			println("Can't write stats for " + steamid + " yet. Still loading.");
 			continue;
 		}
@@ -707,7 +707,7 @@ string formatLastPlayedTime(int seconds) {
 			years += 1;
 		}
 		return "" + years + " year" + (years != 1 ? "s" : "");
-	} else if (months > 0) {
+	} else if (months > 3) {
 		if (days >= daysPerMonth/2) {
 			months += 1;
 		}
@@ -716,6 +716,7 @@ string formatLastPlayedTime(int seconds) {
 		if (hours >= 12) {
 			days += 1;
 		}
+		days += months*daysPerMonth;
 		return "" + days + " day" + (days != 1 ? "s" : "");
 	} else if (hours > 0) {
 		if (minutes >= 30) {

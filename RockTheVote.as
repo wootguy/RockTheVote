@@ -53,6 +53,7 @@ CCVar@ g_MemeMapCooldown;
 CCVar@ g_EnableGameVotes;			// enable text menu replacements for the default game votes
 CCVar@ g_EnableForceSurvivalVotes;	// enable semi-survival vote (requires ForceSurvival plugin)
 CCVar@ g_EnableRestartVotes;
+CCVar@ g_EnableDiffVotes;
 
 // maps that can be nominated with a normal cooldown
 const string votelistFile = "scripts/plugins/cfg/mapvote.txt"; 
@@ -107,6 +108,7 @@ void PluginInit() {
 	@g_EnableGameVotes = CCVar("gameVotes", 1, "Text menu replacements for the default game votes", ConCommandFlag::AdminOnly);
 	@g_EnableForceSurvivalVotes = CCVar("forceSurvivalVotes", 0, "Enable semi-survival vote (requires ForceSurvival plugin)", ConCommandFlag::AdminOnly);
 	@g_EnableRestartVotes = CCVar("restartVotes", 0, "Enable map restart votes", ConCommandFlag::AdminOnly);
+	@g_EnableDiffVotes = CCVar("diffVotes", 0, "Enable dynamic difficulty votes", ConCommandFlag::AdminOnly);
 
 	reset();
 	
@@ -139,6 +141,10 @@ void MapInit() {
 	} else {
 		setFreshMapAsNextMap(g_randomCycleMaps); // something most haven't played in the longest time
 	}
+}
+
+void MapStart() {
+	DiffMapStart();
 }
 
 HookReturnCode MapChange() {
@@ -261,7 +267,7 @@ int getRequiredRtvCount(bool excludeAfks=true) {
 			continue;
 		}
 		
-		if (g_playerStates[i].afkTime > 0 && excludeAfks) {
+		if (g_playerStates[i].afkTime >= 60 && excludeAfks) {
 			continue; // PlayerStatus plugin says this player is afk
 		}
 		
@@ -314,7 +320,7 @@ void createRtvMenu(dictionary args) {
 	println("Shuffling " + shuffleChoices.size() + " maps");
 	
 	for (uint failsafe = 0; failsafe < g_randomRtvChoices.size(); failsafe++) {	
-		if (rtvList.size() >= maxMenuItems) {
+		if (rtvList.size() >= maxMenuItems or shuffleChoices.size() == 0) {
 			break;
 		}
 		
@@ -987,8 +993,7 @@ void printSeriesInfo() {
 		for (uint k = 0; k < maps.size(); k++) {
 			if (maps[k].map == mapname) {
 				int prc = int((k / float(maps.size()))*100);
-				string msg = "This is map " + (k+1) + " of " + maps.size() + " in the \"" + maps[0].map + "\" series" +
-					" (" + prc + "%% complete).";
+				string msg = "This is map " + (k+1) + " of " + maps.size() + " in the \"" + maps[0].map + "\" series";
 				g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, msg + "\n");
 				return;
 			}

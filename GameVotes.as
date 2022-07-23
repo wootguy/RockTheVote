@@ -2,13 +2,22 @@ MenuVote::MenuVote g_gameVote;
 float g_lastGameVote = 0;
 string g_lastVoteStarter; // used to prevent a single player from spamming votes by doubling their cooldown
 bool g_semi_survival = false;
+int g_diff_mode = 0; // persistent diff setting, reset on new map or map series
+
+enum DIFF_MODES {
+	DIFF_DEFAULT, // don't change whatever the default diff level is
+	DIFF_DISABLE, // disable diff until the current map/series is over
+	DIFF_ENABLE,
+	DIFF_MAX
+}
 
 const int VOTE_FAILS_UNTIL_BAN = 2; // if a player keeps starting votes that fail, they're banned from starting more votes
 const int VOTE_FAIL_IGNORE_TIME = 60; // number of minutes to remember failed votes
-const int VOTING_BAN_DURATION = 4*60; // number of minutes a ban lasts (banned from starting votes, not from the server)
+const int VOTING_BAN_DURATION = 2*60; // number of minutes a ban lasts (banned from starting votes, not from the server)
 const int GLOBAL_VOTE_COOLDOWN = 5; // just enough time to read results of the previous vote.
 const int RESTART_MAP_PERCENT_REQ = 80;
 const int SEMI_SURVIVAL_PERCENT_REQ = 67;
+const int DIFF_PERCENT_REQ = 67;
 
 class PlayerVoteState
 {
@@ -285,6 +294,26 @@ void SemiSurvivalMapInit() {
 	}
 }
 
+void DiffMapStart() {
+	bool levelChangeToSameSeries = g_current_series_maps !is null and g_previous_series_maps !is null
+									and g_current_series_maps[0].map == g_previous_series_maps[0].map;
+
+	if (g_diff_mode != DIFF_DEFAULT and levelChangeToSameSeries) {
+		println("[RTV] Persisting voted diff mode across map change in the same series");
+		
+		int votediffValue = -1;
+		if (g_diff_mode == DIFF_DISABLE) {
+			votediffValue = 50;
+		} else if (g_diff_mode == DIFF_MAX) {
+			votediffValue = 100;
+		}
+		
+		g_EngineFuncs.ServerCommand("as_command .votediff " + votediffValue + "\n");
+	} else {
+		g_diff_mode = DIFF_DEFAULT;
+	}
+}
+
 void restartVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, int resultReason) {	
 	PlayerVoteState@ voterState = getPlayerVoteState(voteMenu.voteStarterId);
 
@@ -300,6 +329,33 @@ void restartVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenO
 		int got = voteMenu.getOptionVotePercent("Yes");
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to restart map failed " + yesVoteFailStr(got, required) + ".\n");
 		voterState.handleVoteFail();
+	}
+}
+
+void diffVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, int resultReason) {	
+	PlayerVoteState@ voterState = getPlayerVoteState(voteMenu.voteStarterId);
+
+	g_lastGameVote = g_Engine.time;
+
+	if (chosenOption.value == "on") {
+		voterState.handleVoteSuccess();
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to enable diff passed.\n");
+		g_EngineFuncs.ServerCommand("as_command .votediff -1\n");
+		g_diff_mode = DIFF_ENABLE;
+	} else if (chosenOption.value == "off") {
+		voterState.handleVoteSuccess();
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to disable diff passed.\n");
+		g_EngineFuncs.ServerCommand("as_command .votediff 50\n");
+		g_diff_mode = DIFF_DISABLE;
+	} else if (chosenOption.value == "max") {
+		voterState.handleVoteSuccess();
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to enable MAXIMUM diff passed.\n");
+		g_EngineFuncs.ServerCommand("as_command .votediff 100\n");
+		g_diff_mode = DIFF_MAX;
+	} else {
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to change difficulty failed. No option recieved " + DIFF_PERCENT_REQ + "%% of the votes.\n");
+		voterState.handleVoteFail();
+		g_diff_mode = DIFF_DEFAULT;
 	}
 }
 
@@ -334,6 +390,8 @@ void gameVoteMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTe
 		g_Scheduler.SetTimeout("tryStartSemiSurvivalVote", 0.0f, EHandle(plr));
 	} else if (option == "restartmap") {
 		g_Scheduler.SetTimeout("tryStartRestartVote", 0.0f, EHandle(plr));
+	} else if (option == "setdiff") {
+		g_Scheduler.SetTimeout("tryDiffVote", 0.0f, EHandle(plr));
 	}
 }
 
@@ -358,6 +416,7 @@ void openGameVoteMenu(CBasePlayer@ plr) {
 	string survReq = "\\d(" + int(g_EngineFuncs.CVarGetFloat("mp_votesurvivalmoderequired")) + "% needed)";
 	string semiSurvReq = "\\d(" + SEMI_SURVIVAL_PERCENT_REQ + "% needed)";
 	string restartReq = "\\d(" + RESTART_MAP_PERCENT_REQ + "% needed)";
+	string diffReq = "\\d(" + DIFF_PERCENT_REQ + "% needed)";
 	
 	g_menus[eidx].AddItem("\\wKill player " + killReq + "\\y", any("kill"));
 	
@@ -389,6 +448,10 @@ void openGameVoteMenu(CBasePlayer@ plr) {
 	
 	if (g_EnableRestartVotes.GetInt() != 0)
 		g_menus[eidx].AddItem("\\wRestart map " + restartReq + "\\y", any("restartmap"));
+	
+	if (g_EnableDiffVotes.GetInt() != 0) {
+		g_menus[eidx].AddItem("\\wSet difficulty mode " + diffReq + "\\y", any("setdiff"));
+	}
 	
 	if (!(g_menus[eidx].IsRegistered()))
 		g_menus[eidx].Register();
@@ -661,6 +724,44 @@ void tryStartRestartVote(EHandle h_plr) {
 	g_lastVoteStarter = getPlayerUniqueId(plr);
 	
 	g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to restart map started by \"" + plr.pev.netname + "\".\n");
+	
+	return;
+}
+
+void tryDiffVote(EHandle h_plr) {
+	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+	if (plr is null or !tryStartGameVote(plr)) {
+		return;
+	}
+	
+	array<MenuOption> options = {
+		MenuOption("\\d(exit)"),
+		MenuOption("Disable", "off"),
+		MenuOption("Enable", "on"),
+		MenuOption("MAXIMUM", "max")
+	};
+	options[0].isVotable = false;
+	
+	int currentOption = 2;
+	if (g_diff_mode == DIFF_DISABLE) {
+		currentOption = 1;
+	} else if (g_diff_mode == DIFF_MAX) {
+		currentOption = 3;
+	}
+	
+	MenuVoteParams voteParams;
+	voteParams.title = "Set difficulty mode?";
+	voteParams.options = options;
+	voteParams.percentFailOption = options[0];
+	voteParams.voteTime = int(g_EngineFuncs.CVarGetFloat("mp_votetimecheck"));
+	voteParams.percentNeeded = DIFF_PERCENT_REQ;
+	@voteParams.finishCallback = @diffVoteFinishCallback;
+	@voteParams.optionCallback = @optionChosenCallback;
+	g_gameVote.start(voteParams, plr);
+	
+	g_lastVoteStarter = getPlayerUniqueId(plr);
+	
+	g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to change difficulty started by \"" + plr.pev.netname + "\".\n");
 	
 	return;
 }

@@ -54,6 +54,7 @@ CCVar@ g_EnableGameVotes;			// enable text menu replacements for the default gam
 CCVar@ g_EnableForceSurvivalVotes;	// enable semi-survival vote (requires ForceSurvival plugin)
 CCVar@ g_EnableRestartVotes;
 CCVar@ g_EnableDiffVotes;
+CCVar@ g_EnableAfkKickVotes;
 
 // maps that can be nominated with a normal cooldown
 const string votelistFile = "scripts/plugins/cfg/mapvote.txt"; 
@@ -109,6 +110,7 @@ void PluginInit() {
 	@g_EnableForceSurvivalVotes = CCVar("forceSurvivalVotes", 0, "Enable semi-survival vote (requires ForceSurvival plugin)", ConCommandFlag::AdminOnly);
 	@g_EnableRestartVotes = CCVar("restartVotes", 0, "Enable map restart votes", ConCommandFlag::AdminOnly);
 	@g_EnableDiffVotes = CCVar("diffVotes", 0, "Enable dynamic difficulty votes", ConCommandFlag::AdminOnly);
+	@g_EnableAfkKickVotes = CCVar("afkKickVotes", 1, "Enable AFK kick votes", ConCommandFlag::AdminOnly);
 
 	reset();
 	
@@ -190,7 +192,7 @@ void loadCrossPluginAfkState() {
 		// don't count loading/disconnected players either
 		CustomKeyvalue key2 = customKeys.GetKeyvalue("$i_state" + i);
 		if (key2.Exists() && key2.GetInteger() > 0 && g_playerStates[i].afkTime == 0) {
-			g_playerStates[i].afkTime = 1;
+			g_playerStates[i].afkTime = 999;
 		}
 	}
 }

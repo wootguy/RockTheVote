@@ -121,7 +121,7 @@ HookReturnCode ClientLeave(CBasePlayer@ plr) {
 class MenuVote {
 	int status = MVOTE_NOT_STARTED;
 	
-	private MenuVoteParams voteParams;
+	MenuVoteParams voteParams;
 	private array<int> playerVotes;
 	private array<bool> playerWatching; // players who reopened the menu
 	

@@ -18,6 +18,7 @@ const int GLOBAL_VOTE_COOLDOWN = 5; // just enough time to read results of the p
 const int RESTART_MAP_PERCENT_REQ = 80;
 const int SEMI_SURVIVAL_PERCENT_REQ = 67;
 const int DIFF_PERCENT_REQ = 67;
+const int KICK_AFK_PERCENT_REQ = 67;
 
 class PlayerVoteState
 {
@@ -332,6 +333,78 @@ void restartVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenO
 	}
 }
 
+void kickAfkVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, int resultReason) {	
+	PlayerVoteState@ voterState = getPlayerVoteState(voteMenu.voteStarterId);
+
+	g_lastGameVote = g_Engine.time;
+
+	if (chosenOption.label == "Yes") {
+		voterState.handleVoteSuccess();
+		
+		
+		int kickCount = 0;
+		
+		for ( int i = 1; i <= g_Engine.maxClients; i++ )
+		{
+			CBasePlayer@ plr = g_PlayerFuncs.FindPlayerByIndex(i);
+		
+			if (plr is null or !plr.IsConnected()) {
+				continue;
+			}
+			
+			if (g_playerStates[i].afkTime >= 60) {
+				g_EngineFuncs.ServerCommand("kick #" + g_EngineFuncs.GetPlayerUserId(plr.edict()) + " AFK players were kicked by vote.\n");
+				g_EngineFuncs.ServerExecute();
+				kickCount += 1;
+			}
+		}
+		
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "" + kickCount + " players kicked by vote.\n");
+	}
+	else {
+		int required = KICK_AFK_PERCENT_REQ;
+		int got = voteMenu.getOptionVotePercent("Yes");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to kick AFK players failed " + yesVoteFailStr(got, required) + ".\n");
+		voterState.handleVoteFail();
+	}
+}
+
+void kickAfkThinkCallback(MenuVote::MenuVote@ voteMenu, int secondsLeft) {
+	array<string> afkers;
+	int totalAfk = 0;
+	
+	for ( int i = 1; i <= g_Engine.maxClients; i++ )
+	{
+		CBasePlayer@ p = g_PlayerFuncs.FindPlayerByIndex(i);
+		
+		if (p is null or !p.IsConnected()) {
+			continue;
+		}
+		
+		if (g_playerStates[i].afkTime >= 30) {
+			totalAfk++;
+			afkers.insertLast(p.pev.netname);
+		}
+	}
+	
+	string afkStr = "No one is kickable yet.";
+	
+	if (totalAfk == 1) {
+		afkStr = afkers[0] + " is AFK.";
+	}
+	else if (totalAfk == 2) {
+		afkStr = afkers[0] + " and " + afkers[1] + " are AFK.";
+	}
+	else if (totalAfk == 3) {
+		afkStr = afkers[0] + ", " + afkers[1] + ", and " + afkers[2] + " are AFK.";
+	}
+	else if (totalAfk > 3) {
+		afkStr = "" + totalAfk + " players are AFK.";
+	}
+	
+	voteMenu.voteParams.title = "Kick AFK players?\n" + afkStr + "\n"; 
+}
+
 void diffVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, int resultReason) {	
 	PlayerVoteState@ voterState = getPlayerVoteState(voteMenu.voteStarterId);
 
@@ -392,6 +465,8 @@ void gameVoteMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTe
 		g_Scheduler.SetTimeout("tryStartRestartVote", 0.0f, EHandle(plr));
 	} else if (option == "setdiff") {
 		g_Scheduler.SetTimeout("tryDiffVote", 0.0f, EHandle(plr));
+	} else if (option == "kickafk") {
+		g_Scheduler.SetTimeout("tryKickAfkVote", 0.0f, EHandle(plr));
 	}
 }
 
@@ -417,6 +492,7 @@ void openGameVoteMenu(CBasePlayer@ plr) {
 	string semiSurvReq = "\\d(" + SEMI_SURVIVAL_PERCENT_REQ + "% needed)";
 	string restartReq = "\\d(" + RESTART_MAP_PERCENT_REQ + "% needed)";
 	string diffReq = "\\d(" + DIFF_PERCENT_REQ + "% needed)";
+	string kickAfkReq = "\\d(" + KICK_AFK_PERCENT_REQ + "% needed)";
 	
 	g_menus[eidx].AddItem("\\wKill player " + killReq + "\\y", any("kill"));
 	
@@ -451,6 +527,10 @@ void openGameVoteMenu(CBasePlayer@ plr) {
 	
 	if (g_EnableDiffVotes.GetInt() != 0) {
 		g_menus[eidx].AddItem("\\wSet difficulty mode " + diffReq + "\\y", any("setdiff"));
+	}
+	
+	if (g_EnableAfkKickVotes.GetInt() != 0) {
+		g_menus[eidx].AddItem("\\wKick AFK players " + diffReq + "\\y", any("kickafk"));
 	}
 	
 	if (!(g_menus[eidx].IsRegistered()))
@@ -724,6 +804,37 @@ void tryStartRestartVote(EHandle h_plr) {
 	g_lastVoteStarter = getPlayerUniqueId(plr);
 	
 	g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to restart map started by \"" + plr.pev.netname + "\".\n");
+	
+	return;
+}
+
+void tryKickAfkVote(EHandle h_plr) {
+	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+	if (plr is null or !tryStartGameVote(plr)) {
+		return;
+	}
+	
+	array<MenuOption> options = {
+		MenuOption("Yes", "yes"),
+		MenuOption("No", "no"),
+		MenuOption("\\d(exit)")
+	};
+	options[2].isVotable = false;
+	
+	MenuVoteParams voteParams;
+	voteParams.title = "Kick AFK players?";
+	voteParams.options = options;
+	voteParams.percentFailOption = options[1];
+	voteParams.voteTime = int(g_EngineFuncs.CVarGetFloat("mp_votetimecheck"));
+	voteParams.percentNeeded = KICK_AFK_PERCENT_REQ;
+	@voteParams.finishCallback = @kickAfkVoteFinishCallback;
+	@voteParams.optionCallback = @optionChosenCallback;
+	@voteParams.thinkCallback = @kickAfkThinkCallback;
+	g_gameVote.start(voteParams, plr);
+	
+	g_lastVoteStarter = getPlayerUniqueId(plr);
+	
+	g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to kick AFK players started by \"" + plr.pev.netname + "\".\n");
 	
 	return;
 }

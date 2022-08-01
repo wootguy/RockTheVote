@@ -620,7 +620,7 @@ void nomMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTextMen
 	string mapfilter = parts[1];
 	int itempage = atoi(parts[2]);
 	
-	if (!tryNominate(plr, mapname)) {
+	if (!tryNominate(plr, mapname, false)) {
 		array<string> similarNames = generateNomMenu(mapfilter);
 		g_Scheduler.SetTimeout("openNomMenu", 0.0f, EHandle(plr), mapfilter, similarNames, itempage);
 	}
@@ -677,7 +677,7 @@ array<string> generateNomMenu(string mapname) {
 	return similarNames;
 }
 
-bool tryNominate(CBasePlayer@ plr, string mapname) {
+bool tryNominate(CBasePlayer@ plr, string mapname, bool isRandom) {
 	if (g_rtvVote.status != MVOTE_NOT_STARTED) {
 		return false;
 	}
@@ -705,7 +705,7 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 			openNomMenu(plr, mapname, similarNames, 0);
 		}
 		else if (similarNames.size() == 1) {
-			return tryNominate(plr, similarNames[0]);
+			return tryNominate(plr, similarNames[0], isRandom);
 		}
 		
 		return false;
@@ -747,10 +747,10 @@ bool tryNominate(CBasePlayer@ plr, string mapname) {
 	g_nomList.insertLast(mapname);
 	
 	if (oldNomMap.IsEmpty()) {
-		g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + " nominated \"" + mapname + "\".\n");
+		g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + (isRandom ? " randomly" : "") + " nominated \"" + mapname + "\".\n");
 	} else {
 		g_nomList.removeAt(g_nomList.find(oldNomMap));
-		g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + " changed their nomination to \"" + mapname + "\".\n");
+		g_PlayerFuncs.SayTextAll(plr, "[RTV] " + plr.pev.netname + (isRandom ? " randomly" : "") + " changed their nomination to \"" + mapname + "\".\n");
 	}
 	
 	return true;
@@ -995,7 +995,7 @@ void printSeriesInfo() {
 		for (uint k = 0; k < maps.size(); k++) {
 			if (maps[k].map == mapname) {
 				int prc = int((k / float(maps.size()))*100);
-				string msg = "This is map " + (k+1) + " of " + maps.size() + " in the \"" + maps[0].map + "\" series";
+				string msg = "This is map " + (k+1) + " of " + maps.size() + " in the \"" + maps[0].map + "\" series.";
 				g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, msg + "\n");
 				return;
 			}
@@ -1195,7 +1195,11 @@ int doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		}
 		else if (args[0] == "nom" || args[0] == "nominate" || args[0] == ".nom" || args[0] == ".nominate") {
 			string mapname = args.ArgC() >= 2 ? args[1].ToLowercase() : "";
-			tryNominate(plr, mapname);
+			tryNominate(plr, mapname, false);
+			return 2;
+		}
+		else if (args[0] == "rnom") {
+			tryNominate(plr, g_everyMap[Math.RandomLong(0, g_everyMap.size())].map, true);
 			return 2;
 		}
 		else if (args[0] == "unnom" || args[0] == "unom" || args[0] == "denom" ||

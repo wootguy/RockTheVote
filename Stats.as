@@ -672,7 +672,7 @@ void writeActivePlayerStats() {
 		string path = getPlayerDbPath(steamid);
 		File@ f = g_FileSystem.OpenFile(path, OpenFile::WRITE);
 
-		if (!f.IsOpen()) {
+		if (f is null or !f.IsOpen()) {
 			println("Failed to open player map stats file: " + path + "\n");
 			return;
 		}

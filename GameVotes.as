@@ -306,7 +306,7 @@ void DiffMapStart() {
 		if (g_diff_mode == DIFF_DISABLE) {
 			votediffValue = 50;
 		} else if (g_diff_mode == DIFF_MAX) {
-			votediffValue = 100;
+			votediffValue = 99;
 		}
 		
 		g_EngineFuncs.ServerCommand("as_command .votediff " + votediffValue + "\n");
@@ -568,7 +568,7 @@ void openVoteKillMenu(EHandle h_plr) {
 	}
 	
 	if (targets.size() == 0) {
-		g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "[Vote] Can't vote kill. No one is alive.\n");
+		g_PlayerFuncs.ClientPrint(user, HUD_PRINTTALK, "[Vote] Can't vote kill. No one is alive.\n");
 	}
 	
 	targets.sort(function(a,b) { return a.label > b.label; });
@@ -849,7 +849,7 @@ void tryDiffVote(EHandle h_plr) {
 		MenuOption("\\d(exit)"),
 		MenuOption("Disable", "off"),
 		MenuOption("Enable", "on"),
-		MenuOption("MAXIMUM", "max")
+		MenuOption("Impossible!", "max")
 	};
 	options[0].isVotable = false;
 	

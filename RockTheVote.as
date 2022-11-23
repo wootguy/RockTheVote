@@ -8,6 +8,7 @@
 // - configurable min active time and min series map plays
 // - reopen menu should close again or not show messsage
 
+// per-map states
 class RtvState {
 	bool didRtv = false;	// player wants to rock the vote?
 	string nom; 			// what map this player nominated
@@ -244,7 +245,6 @@ void game_end(string nextMap) {
 	g_EngineFuncs.ServerCommand("mp_nextmap_cycle " + nextMap + "\n");
 	CBaseEntity@ endEnt = g_EntityFuncs.CreateEntity("game_end");
 	endEnt.Use(null, null, USE_TOGGLE);
-	g_Log.PrintF("[RTV] level change to " + nextMap + "\n");
 }
 
 
@@ -302,36 +302,91 @@ void createRtvMenu(dictionary args) {
 	}
 	
 	uint maxMenuItems = Math.min(g_MaxMapsToVote.GetInt(), 8);
-	
-	if (rtvList.size() < maxMenuItems and g_nomList.find(g_MapCycle.GetNextMap()) == -1) {
-		rtvList.insertLast(g_MapCycle.GetNextMap());
-	}
+
+	// always have at least one good map, or the next map if this is a series
+	rtvList.insertLast(g_MapCycle.GetNextMap());
 	
 	array<string> shuffleChoices;
+	array<string> randChoices;
+	array<string> goodChoices;
 	uint firstPlayedMapIdx = 0;
-	int mapsNeeded = maxMenuItems - rtvList.size();
+	uint mapsNeeded = maxMenuItems - rtvList.size();
 	
 	// prevent the same maps always being shown for players who have little history
 	for (uint i = 0; i < g_randomRtvChoices.size(); i++) {
-		if (g_randomRtvChoices[i].sort != 0 and int(shuffleChoices.size()) > mapsNeeded) {
+		if (g_randomRtvChoices[i].sort != 0 and shuffleChoices.size() > mapsNeeded) {
 			break;
 		}
 		
 		shuffleChoices.insertLast(g_randomRtvChoices[i].map);
 	}
-	println("Shuffling " + shuffleChoices.size() + " maps");
 	
+	for (uint i = 0; i < g_randomCycleMaps.size() && i < mapsNeeded; i++) {
+		string map = g_randomCycleMaps[Math.RandomLong(0, g_randomCycleMaps.size()-1)].map;
+		bool alreadyAdded = goodChoices.find(map) != -1 || shuffleChoices.find(map) != -1;
+		bool enoughInPool = g_randomCycleMaps.size() > mapsNeeded*2;
+		bool wasPlayedSuperRecently = g_Engine.mapname == map || g_previous_map == map;
+		if ((alreadyAdded || wasPlayedSuperRecently) && enoughInPool) {
+			i--; // try again
+			continue;
+		}
+		goodChoices.insertLast(map);
+	}
+	
+	for (uint i = 0; i < g_randomRtvChoices.size() && i < mapsNeeded; i++) {
+		string map = g_randomRtvChoices[Math.RandomLong(0, g_randomRtvChoices.size()-1)].map;
+		bool alreadyAdded = goodChoices.find(map) != -1 || randChoices.find(map) != -1 || shuffleChoices.find(map) != -1;
+		bool enoughInPool = g_randomRtvChoices.size() > mapsNeeded*2;
+		bool wasPlayedSuperRecently = g_Engine.mapname == map || g_previous_map == map;
+		if ((alreadyAdded || wasPlayedSuperRecently) && enoughInPool) {
+			i--; // try again
+			continue;
+		}
+		randChoices.insertLast(map);
+	}
+	
+	// rtv layout for when there are no noms
+	// 1 - (exit)
+	// 2 - next map (good map or map cycle)
+	// 3 - good map (map cycle)
+	// 4 - lesser played map
+	// 5 - lesser played map
+	// 6 - decent map (map cycle)
+	// 7 - decent map (map cycle)
+	int addedMaps = 0;
 	for (uint failsafe = 0; failsafe < g_randomRtvChoices.size(); failsafe++) {	
-		if (rtvList.size() >= maxMenuItems or shuffleChoices.size() == 0) {
+		if (rtvList.size() >= maxMenuItems) {
 			break;
 		}
 		
-		int idx = Math.RandomLong(0, shuffleChoices.size()-1);
-		string randomMap = shuffleChoices[idx];
-		shuffleChoices.removeAt(idx);
-		
-		if (rtvList.find(randomMap) == -1 && g_EngineFuncs.IsMapValid(randomMap)) {
-			rtvList.insertLast(randomMap);
+		if (addedMaps <= 0 && goodChoices.size() > 0) {
+			int idx = Math.RandomLong(0, goodChoices.size()-1);
+			string goodMap = goodChoices[idx];
+			goodChoices.removeAt(idx);
+			if (rtvList.find(goodMap) == -1 && g_EngineFuncs.IsMapValid(goodMap)) {
+				rtvList.insertLast(goodMap);
+				addedMaps++;
+			}
+		}
+		else if (addedMaps <= 2 && shuffleChoices.size() > 0) {
+			int idx = Math.RandomLong(0, shuffleChoices.size()-1);
+			string lesserPlayedMap = shuffleChoices[idx];
+			shuffleChoices.removeAt(idx);
+			if (rtvList.find(lesserPlayedMap) == -1 && g_EngineFuncs.IsMapValid(lesserPlayedMap)) {
+				rtvList.insertLast(lesserPlayedMap);
+				addedMaps++;
+			}
+		} else if (randChoices.size() > 0) {
+			int idx = Math.RandomLong(0, randChoices.size()-1);
+			string randomMap = randChoices[idx];
+			randChoices.removeAt(idx);
+			
+			if (rtvList.find(randomMap) == -1 && g_EngineFuncs.IsMapValid(randomMap)) {
+				rtvList.insertLast(randomMap);
+				addedMaps++;
+			}
+		} else {
+			break;
 		}
 	}
 	
@@ -727,7 +782,8 @@ bool tryNominate(CBasePlayer@ plr, string mapname, bool isRandom) {
 		return false;
 	}
 	
-	if (int(g_nomList.size()) >= g_MaxMapsToVote.GetInt() && g_playerStates[eidx].nom == "") {
+	// leave one slot empty for next map in series, or at least one "good map" in case everyone is nomming meme maps
+	if (int(g_nomList.size()) >= g_MaxMapsToVote.GetInt()-1 && g_playerStates[eidx].nom == "") {
 		g_PlayerFuncs.SayText(plr, "[RTV] The max number of nominations has been reached!\n");
 		return false;
 	}

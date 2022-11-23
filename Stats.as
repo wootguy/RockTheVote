@@ -702,7 +702,7 @@ string formatLastPlayedTime(int seconds) {
 	int months = (seconds / (60*60*24*daysPerMonth));
 	int years = (seconds / (60*60*24*365));
 	
-	if (years > 0) {
+	if (years > 1) {
 		if (months >= 6) {
 			years += 1;
 		}

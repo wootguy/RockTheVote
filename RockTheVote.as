@@ -557,7 +557,7 @@ int tryRtv(CBasePlayer@ plr) {
 	
 	g_playerStates[eidx].didRtv = true;	
 	
-	if (getCurrentRtvCount() >= getRequiredRtvCount()) {
+	if (getCurrentRtvCount() >= getRequiredRtvCount() and getCurrentRtvCount() > 0) {
 		sayRtvCount(plr);
 		startVote();
 	} else {

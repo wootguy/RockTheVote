@@ -2,6 +2,7 @@
 #include "GameVotes"
 #include "Stats"
 #include "HashMap"
+#include "inc/RelaySay"
 
 // TODO:
 // - play 50% of a series for it to count as a play, not just a sinle map
@@ -400,7 +401,7 @@ void createRtvMenu(dictionary args) {
 	}
 
 	MenuVoteParams voteParams;
-	voteParams.title = "RTV Vote";
+	voteParams.title = "Next map";
 	voteParams.options = menuOptions;
 	voteParams.voteTime = g_VotingPeriodTime.GetInt();
 	@voteParams.optionCallback = @mapChosenCallback;
@@ -502,6 +503,7 @@ void voteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOption, 
 	
 	g_Log.PrintF("[RTV] chose " + nextMap + "\n");
 	
+	RelaySay("Map ended by vote.");
 	g_Scheduler.SetTimeout("game_end", MenuVote::g_resultTime, nextMap);
 	g_Scheduler.SetTimeout("reset_failsafe", MenuVote::g_resultTime + levelChangeDelay + 0.1f);
 }
@@ -656,7 +658,7 @@ bool isMapExcluded(string mapname, array<SteamName> activePlayers, CBasePlayer@ 
 	if (recentCount > 0) {
 		string splr = recentCount == 1 ?  recentName : "" + recentCount + " people here";
 		string smap = g_seriesMaps.exists(mapname) ? "that map series" : "that map";
-		g_PlayerFuncs.SayText(plr, "[RTV] Can't nom \"" + mapname + "\" yet. " + splr + " played " + smap + " less than " + formatLastPlayedTime(cooldown) + " ago.\n");
+		g_PlayerFuncs.SayText(plr, "[RTV] Can't nom \"" + mapname + "\" yet. " + splr + " played " + smap + " fewer than " + formatLastPlayedTime(cooldown) + " ago.\n");
 	}
 	
 	return recentCount > 0;
@@ -1053,12 +1055,14 @@ void printSeriesInfo() {
 				int prc = int((k / float(maps.size()))*100);
 				string msg = "This is map " + (k+1) + " of " + maps.size() + " in the \"" + maps[0].map + "\" series.";
 				g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, msg + "\n");
+				RelaySay(msg);
 				return;
 			}
 		}
 	}
 	
 	g_PlayerFuncs.ClientPrintAll(HUD_PRINTTALK, "This is not a map series.");
+	RelaySay("This is not a map series.");
 }
 
 bool rejectNonAdmin(CBasePlayer@ plr) {

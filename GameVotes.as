@@ -167,6 +167,7 @@ void voteKillFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOpti
 			} else {
 				g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote killing " + deadCount + " players.\n");
 			}
+			RelaySay("" + deadCount + " players killed by vote.");
 	
 			return;
 		}
@@ -194,6 +195,7 @@ void voteKillFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOpti
 		
 		voterState.handleVoteSuccess();
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote killing " + name + " for " + timeStr + ".\n");
+		RelaySay("" + name + " killed by vote.");
 		keep_votekilled_player_dead(steamId, name, DateTime(), killTime);
 		victimState.killedCount += 1;
 	}
@@ -241,10 +243,12 @@ void survivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosen
 		if (chosenOption.value == "enable") {
 			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to enable survival mode passed.\n");
 			g_SurvivalMode.VoteToggle();
+			RelaySay("Survival mode enabled by vote.");
 		} else if (chosenOption.value == "disable") {
 			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to disable survival mode passed.\n");
 			g_SurvivalMode.VoteToggle();
 			g_EngineFuncs.ServerCommand("as_command fsurvival.mode 0\n");
+			RelaySay("Survival mode disabled by vote.");
 			g_semi_survival = false;
 		}
 	}
@@ -268,10 +272,12 @@ void semiSurvivalVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ ch
 			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to enable semi-survival mode passed.\n");
 			g_EngineFuncs.ServerCommand("as_command fsurvival.mode 2\n");
 			g_semi_survival = true;
+			RelaySay("Semi-survival mode enabled by vote.");
 		} else if (chosenOption.value == "disable") {
 			g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to switch to normal survival mode passed.\n");
 			g_EngineFuncs.ServerCommand("as_command fsurvival.mode 3\n");
 			g_semi_survival = false;
+			RelaySay("Survival mode enabled by vote.");
 		}
 	}
 	else {
@@ -324,6 +330,7 @@ void restartVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenO
 		voterState.handleVoteSuccess();
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to restart map passed. Restarting in 5 seconds.\n");
 		@g_timer = g_Scheduler.SetTimeout("game_end", MenuVote::g_resultTime + (5-MenuVote::g_resultTime), "" + g_Engine.mapname);
+		RelaySay("Map ended by vote.");
 	}
 	else {
 		int required = RESTART_MAP_PERCENT_REQ;
@@ -360,6 +367,7 @@ void kickAfkVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenO
 		}
 		
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "" + kickCount + " players kicked by vote.\n");
+		RelaySay("" + kickCount + " AFK players kicked by vote.\n");
 	}
 	else {
 		int required = KICK_AFK_PERCENT_REQ;
@@ -413,17 +421,20 @@ void diffVoteFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOpti
 	if (chosenOption.value == "on") {
 		voterState.handleVoteSuccess();
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to enable diff passed.\n");
+		RelaySay("Diff enabled by vote.");
 		g_EngineFuncs.ServerCommand("as_command .votediff -1\n");
 		g_diff_mode = DIFF_ENABLE;
 	} else if (chosenOption.value == "off") {
 		voterState.handleVoteSuccess();
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to disable diff passed.\n");
+		RelaySay("Diff disabled by vote.");
 		g_EngineFuncs.ServerCommand("as_command .votediff 50\n");
 		g_diff_mode = DIFF_DISABLE;
 	} else if (chosenOption.value == "max") {
 		voterState.handleVoteSuccess();
-		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to enable MAXIMUM diff passed.\n");
-		g_EngineFuncs.ServerCommand("as_command .votediff 100\n");
+		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to enable impossible diff passed.\n");
+		g_EngineFuncs.ServerCommand("as_command .votediff 99\n");
+		RelaySay("Impossible diff enabled by vote.");
 		g_diff_mode = DIFF_MAX;
 	} else {
 		g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, "Vote to change difficulty failed. No option recieved " + DIFF_PERCENT_REQ + "%% of the votes.\n");
@@ -441,6 +452,7 @@ void customPollFinishCallback(MenuVote::MenuVote@ voteMenu, MenuOption@ chosenOp
 	string relayResult = voteMenu.getResultString();	
 	string chatResult = "[Poll] " + voteMenu.getTitle() + " " + chosenOption.label + " (" + percent + "%)\n";
 	g_PlayerFuncs.ClientPrintAll(HUD_PRINTNOTIFY, chatResult.Replace("%", "%%") + "\n");
+	RelaySay(relayResult);
 }
 
 void gameVoteMenuCallback(CTextMenu@ menu, CBasePlayer@ plr, int page, const CTextMenuItem@ item) {
